@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sunline: Breakwater - Solmera</title>
+<link rel="stylesheet" href="./style.css">
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js" } }
+</script>
+</head>
+<body>
+<canvas id="game" aria-label="Sunline Breakwater: open world crime game in Solmera"></canvas>
+
+<div id="hud" class="hidden">
+  <div id="mission-panel">
+    <div id="mission-title">Bengkel Terakhir</div>
+    <div id="mission-stage">Stage 1 of 3</div>
+    <div id="mission-objective">NEXT: Ambil kunci bengkel</div>
+  </div>
+
+  <div id="dispatch-panel">
+    <div id="dispatch-title">POLICE DISPATCH</div>
+    <div id="dispatch-status">CLEAR</div>
+    <div id="dispatch-units"></div>
+  </div>
+
+  <div id="stats-panel">
+    <div id="money">S 0</div>
+    <div id="wanted-stars" aria-label="Wanted level">
+      <span class="star">&#9733;</span><span class="star">&#9733;</span><span class="star">&#9733;</span>
+    </div>
+    <div id="health-row">
+      <div class="bar-label">HP</div>
+      <div class="bar"><div id="health-bar" style="width: 100%"></div></div>
+    </div>
+    <div id="armor-row">
+      <div class="bar-label">ARMOR</div>
+      <div class="bar"><div id="armor-bar" style="width: 0%"></div></div>
+    </div>
+    <div id="ammo">Pistol 12 / 60</div>
+  </div>
+
+  <div id="reticle" class="hidden"><span></span></div>
+
+  <div id="dialog" class="hidden">
+    <div id="dialog-portrait">M</div>
+    <div id="dialog-body">
+      <div id="dialog-name">Mara Velez</div>
+      <div id="dialog-text"></div>
+    </div>
+  </div>
+
+  <div id="minimap-wrap">
+    <canvas id="minimap" width="180" height="180" aria-label="Minimap of Solmera"></canvas>
+    <div id="minimap-district">COBRE VIEJO</div>
+  </div>
+
+  <div id="speed-panel">
+    <div id="speed-value">0</div>
+    <div id="speed-unit">km/h</div>
+    <div id="vehicle-name">On foot</div>
+    <div id="vehicle-condition">Kondisi 100%</div>
+    <div id="vehicle-upgrades"></div>
+  </div>
+
+  <div id="radio-bar">
+    <span id="radio-name">Sunwire FM</span>
+    <span id="radio-show">Sore di Solmera</span>
+  </div>
+
+  <div id="toast" class="hidden"></div>
+  <div id="hint">WASD jalan, E masuk mobil, 1/2 senjata, Esc pause</div>
+</div>
+
+<div id="menu">
+  <div class="menu-card">
+    <h1>SUNLINE<span>: BREAKWATER</span></h1>
+    <p class="menu-sub">Solmera tidak pernah tidur. Bengkel keluarga Mara terancam disita, dan satu-satunya jalan keluar adalah mengemudi.</p>
+    <div class="menu-buttons">
+      <button id="btn-continue" type="button">Continue</button>
+      <button id="btn-new-game" type="button">New Game</button>
+      <button id="btn-settings" type="button">Settings</button>
+    </div>
+    <div id="settings-panel" class="hidden">
+      <label>Volume <input id="setting-volume" type="range" min="0" max="100" value="70"></label>
+      <label>Mouse sensitivity <input id="setting-sensitivity" type="range" min="20" max="200" value="100"></label>
+    </div>
+    <p class="menu-foot">WASD bergerak, Mouse bidik, E masuk dan keluar mobil, 1 dan 2 ganti senjata, Esc pause. Keyboard dan mouse saja.</p>
+  </div>
+</div>
+
+<div id="pause-menu" class="hidden">
+  <div class="menu-card">
+    <h2>PAUSED</h2>
+    <div class="menu-buttons">
+      <button id="btn-resume" type="button">Resume</button>
+      <button id="btn-restart-mission" type="button">Restart Mission</button>
+      <button id="btn-quit-menu" type="button">Quit to Menu</button>
+    </div>
+  </div>
+</div>
+
+<div id="mission-complete" class="hidden">
+  <div class="menu-card">
+    <h2>MISSION COMPLETE</h2>
+    <div id="complete-reward">+S 800</div>
+    <div class="menu-buttons">
+      <button id="btn-next-mission" type="button">Next Mission</button>
+    </div>
+  </div>
+</div>
+
+<div id="mission-fail" class="hidden">
+  <div class="menu-card">
+    <h2>MISSION FAILED</h2>
+    <p id="fail-reason"></p>
+    <div class="menu-buttons">
+      <button id="btn-retry-mission" type="button">Retry from Checkpoint</button>
+    </div>
+  </div>
+</div>
+
+<div id="game-over" class="hidden">
+  <div class="menu-card">
+    <h2>BUSTED</h2>
+    <p>Mara ditangkap. Solmera menunggu.</p>
+    <div class="menu-buttons">
+      <button id="btn-retry-gameover" type="button">Retry from Checkpoint</button>
+      <button id="btn-menu-gameover" type="button">Quit to Menu</button>
+    </div>
+  </div>
+</div>
+
+<p id="status" role="status" aria-live="polite"></p>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
