@@ -3,19 +3,8 @@
 // isTouchDevice() is false this module creates no DOM at all and the
 // keyboard/mouse path in input.js keeps working exactly as before.
 //
-// Touch layout (all DOM + inline styles are built here in JS, so
-// index.html and style.css are never touched):
-//   - virtual analog joystick, bottom-left ABOVE the minimap (the
-//     minimap stays bottom-left; moving it to top-left would collide
-//     with the mission panel, and mid-left would collide with the
-//     dispatch panel on wide screens). Joystick drives input.keys
-//     (booleans, so on-foot movement works unchanged) and input.analog
-//     (proportional -1..1, used by input.steer()/throttle() in a car).
-//   - SPRINT hold button next to the joystick.
-//   - action buttons bottom-right ABOVE the speed panel: INTERACT,
-//     SHOOT (hold to aim, tap/repeat to fire), NITRO in a car /
-//     WEAPON on foot, plus small PAUSE and RADIO buttons top-right
-//     below the stats panel.
+// Touch controls are positioned relative to measured HUD panels and use safe-area offsets.
+// Joystick drives input.keys and input.analog; action handlers stay shared with keyboard input.
 //   - camera drag: a touch drag that starts on the canvas on the right
 //     half of the screen rotates the view. It accumulates
 //     input.mouse.dx/dy (the same channel takeMouseDelta() reads) and
@@ -27,14 +16,13 @@
 import {
   ACTION_INTERACT,
   ACTION_PAUSE,
-  ACTION_RADIO,
   ACTION_WEAPON_1,
   ACTION_WEAPON_2,
   ACTION_SHOOT,
   ACTION_NITRO,
 } from './input.js';
 
-const JOYSTICK_RADIUS = 60;
+let JOYSTICK_RADIUS = 60;
 const DEAD_ZONE = 0.22;
 
 /** True when this device has a coarse (touch) pointer. */
@@ -70,7 +58,7 @@ function makeButton({ id, label, sub, size, right, bottom, top, left, fontSize }
     `font-size:${fontSize || 13}px;`;
   btn.innerHTML =
     `<span style="font-size:${fontSize || 13}px;line-height:1.1;">${label}</span>` +
-    (sub ? `<span style="font-size:10px;font-weight:600;color:#ffd97a;line-height:1.1;">${sub}</span>` : '');
+    `<span data-touch-sub style="font-size:10px;font-weight:600;color:#ffd97a;line-height:1.1;">${sub || ''}</span>`;
   return btn;
 }
 
@@ -91,6 +79,9 @@ export function initTouch(input, opts = {}) {
   let root = null;
   let knob = null;
   let nitroBtn = null;
+  let layoutTimer = null;
+  let pauseBtn = null;
+  let actionButtons = [];
   let active = false;
   let stickPointerId = null;
   let camPointerId = null;
@@ -127,6 +118,8 @@ export function initTouch(input, opts = {}) {
     const inCar = isInCar();
     nitroBtn.dataset.mode = inCar ? 'nitro' : 'weapon';
     nitroBtn.querySelector('span').textContent = inCar ? 'NITRO' : 'SENJATA';
+    const sub = nitroBtn.querySelector('[data-touch-sub]');
+    if (sub) sub.textContent = inCar ? 'nitro' : '';
     nitroBtn.setAttribute('aria-label', inCar ? 'Nitro' : 'Ganti senjata');
   }
 
@@ -145,12 +138,12 @@ export function initTouch(input, opts = {}) {
     root.style.cssText =
       'position:fixed;inset:0;z-index:8;pointer-events:none;';
 
-    // --- Analog joystick, bottom-left above the minimap ---
+    // --- Analog joystick, bottom-left ---
     const base = document.createElement('div');
     base.dataset.touch = 'joystick';
     base.setAttribute('aria-label', 'Joystick analog');
     base.style.cssText =
-      'position:fixed;left:18px;bottom:158px;width:124px;height:124px;border-radius:50%;' +
+      'position:fixed;left:calc(16px + env(safe-area-inset-left));bottom:calc(16px + env(safe-area-inset-bottom));width:124px;height:124px;border-radius:50%;' +
       'border:2px solid rgba(255,255,255,0.45);background:rgba(10,16,26,0.4);' +
       'pointer-events:auto;touch-action:none;';
     knob = document.createElement('div');
@@ -178,21 +171,16 @@ export function initTouch(input, opts = {}) {
       e.preventDefault();
     });
     base.addEventListener('pointermove', stickMove);
-    const stickEnd = (e) => {
-      if (e.pointerId === stickPointerId) resetStick();
-    };
+    const stickEnd = (e) => { if (e.pointerId === stickPointerId) resetStick(); };
     base.addEventListener('pointerup', stickEnd);
     base.addEventListener('pointercancel', stickEnd);
     root.appendChild(base);
 
-    // --- SPRINT (hold), next to the joystick ---
-    const sprintBtn = makeButton({
-      id: 'sprint', label: 'LARI', sub: 'tahan', size: 60, left: 158, bottom: 176,
-    });
+    const sprintBtn = makeButton({ id: 'sprint', label: 'LARI', sub: '', size: 60, left: 154, bottom: 48 });
+    sprintBtn.style.left = 'calc(154px + env(safe-area-inset-left))';
+    sprintBtn.style.bottom = 'calc(48px + env(safe-area-inset-bottom))';
     sprintBtn.addEventListener('pointerdown', (e) => {
-      input.keys.sprint = true;
-      pressFeedback(sprintBtn, true);
-      e.preventDefault();
+      input.keys.sprint = true; pressFeedback(sprintBtn, true); e.preventDefault();
     });
     const sprintEnd = () => { input.keys.sprint = false; pressFeedback(sprintBtn, false); };
     sprintBtn.addEventListener('pointerup', sprintEnd);
@@ -200,23 +188,18 @@ export function initTouch(input, opts = {}) {
     sprintBtn.addEventListener('pointerleave', sprintEnd);
     root.appendChild(sprintBtn);
 
-    // --- Action buttons, bottom-right above the speed panel ---
-    const interactBtn = makeButton({
-      id: 'interact', label: 'MASUK', sub: 'mobil (E)', size: 68, right: 16, bottom: 168, fontSize: 14,
-    });
+    const interactBtn = makeButton({ id: 'interact', label: 'MASUK', sub: '', size: 76, right: 16, bottom: 12, fontSize: 13 });
+    interactBtn.style.right = 'calc(16px + env(safe-area-inset-right))';
     interactBtn.addEventListener('pointerdown', (e) => {
-      input.queueAction(ACTION_INTERACT);
-      pressFeedback(interactBtn, true);
-      setTimeout(() => pressFeedback(interactBtn, false), 150);
-      e.preventDefault();
+      input.queueAction(ACTION_INTERACT); pressFeedback(interactBtn, true);
+      setTimeout(() => pressFeedback(interactBtn, false), 150); e.preventDefault();
     });
     root.appendChild(interactBtn);
 
-    const shootBtn = makeButton({
-      id: 'shoot', label: 'TEMBAK', sub: 'tahan = bidik', size: 68, right: 96, bottom: 168, fontSize: 14,
-    });
+    const shootBtn = makeButton({ id: 'shoot', label: 'TEMBAK', sub: 'bidik', size: 68, right: 104, bottom: 12, fontSize: 12 });
+    shootBtn.style.right = 'calc(104px + env(safe-area-inset-right))';
     shootBtn.addEventListener('pointerdown', (e) => {
-      input.mouse.rightDown = true; // aim while held
+      input.mouse.rightDown = true;
       input.queueAction(ACTION_SHOOT);
       pressFeedback(shootBtn, true);
       clearInterval(shootTimer);
@@ -224,54 +207,103 @@ export function initTouch(input, opts = {}) {
       e.preventDefault();
     });
     const shootEnd = () => {
-      input.mouse.rightDown = false;
-      pressFeedback(shootBtn, false);
-      clearInterval(shootTimer);
-      shootTimer = null;
+      input.mouse.rightDown = false; pressFeedback(shootBtn, false);
+      clearInterval(shootTimer); shootTimer = null;
     };
     shootBtn.addEventListener('pointerup', shootEnd);
     shootBtn.addEventListener('pointercancel', shootEnd);
     shootBtn.addEventListener('pointerleave', shootEnd);
     root.appendChild(shootBtn);
 
-    nitroBtn = makeButton({
-      id: 'nitro-weapon', label: 'SENJATA', sub: 'di mobil: nitro', size: 64, right: 16, bottom: 248, fontSize: 11,
-    });
+    nitroBtn = makeButton({ id: 'nitro-weapon', label: 'SENJATA', sub: '', size: 64, right: 16, bottom: 100, fontSize: 10 });
+    nitroBtn.style.right = 'calc(16px + env(safe-area-inset-right))';
     nitroBtn.addEventListener('pointerdown', (e) => {
       if (isInCar()) input.queueAction(ACTION_NITRO);
-      else {
-        weaponToggle = 1 - weaponToggle;
-        input.queueAction(weaponToggle ? ACTION_WEAPON_2 : ACTION_WEAPON_1);
-      }
+      else { weaponToggle = 1 - weaponToggle; input.queueAction(weaponToggle ? ACTION_WEAPON_2 : ACTION_WEAPON_1); }
       pressFeedback(nitroBtn, true);
       setTimeout(() => { pressFeedback(nitroBtn, false); refreshNitroLabel(); }, 150);
       e.preventDefault();
     });
     root.appendChild(nitroBtn);
 
-    // --- Small PAUSE / RADIO buttons, top-right below the stats panel ---
-    const pauseBtn = makeButton({
-      id: 'pause', label: 'II', sub: 'pause', size: 48, right: 16, top: 182, fontSize: 15,
-    });
-    pauseBtn.addEventListener('pointerdown', (e) => {
-      input.queueAction(ACTION_PAUSE);
-      e.preventDefault();
-    });
+    pauseBtn = makeButton({ id: 'pause', label: 'II', sub: '', size: 48, right: 16, top: 100, fontSize: 15 });
+    pauseBtn.style.right = 'calc(16px + env(safe-area-inset-right))';
+    pauseBtn.addEventListener('pointerdown', (e) => { input.queueAction(ACTION_PAUSE); e.preventDefault(); });
     root.appendChild(pauseBtn);
+    actionButtons = [interactBtn, shootBtn, nitroBtn, sprintBtn, pauseBtn];
 
-    const radioBtn = makeButton({
-      id: 'radio', label: 'RADIO', sub: '', size: 48, right: 76, top: 182, fontSize: 11,
-    });
-    radioBtn.addEventListener('pointerdown', (e) => {
-      input.queueAction(ACTION_RADIO);
-      e.preventDefault();
-    });
-    root.appendChild(radioBtn);
+    // Measured layout, recomputed on resize + every 500ms (speed/stats
+    // panels change height between on-foot and in-car). Short viewports
+    // (height < 500, e.g. a phone in landscape at 800x360) get compact
+    // controls and a SINGLE-ROW action cluster: stacking SENJATA above
+    // MASUK collides with the stats panel when the viewport is short,
+    // and a pause button below the stats collides with MASUK. In
+    // landscape the pause button therefore sits top-centre, a band that
+    // is free at every landscape width (mission left, stats right);
+    // in portrait there is vertical room, so pause stays below stats.
+    function updateMeasuredLayout() {
+      if (!root) return;
+      const speed = document.getElementById('speed-panel');
+      const stats = document.getElementById('stats-panel');
+      const h = window.innerHeight;
+      const w = window.innerWidth;
+      const short = h < 500;
+      const landscape = w > h;
+      const joySize = short ? 100 : 124;
+      const knobSize = short ? 44 : 54;
+      const sprintSize = short ? 52 : 60;
+      const masukSize = short ? 64 : 76;
+      const shootSize = short ? 60 : 68;
+      const nitroSize = short ? 56 : 64;
+      const pauseSize = short ? 44 : 48;
+      const gap = 12;
+      JOYSTICK_RADIUS = short ? 50 : 60;
+      base.style.width = joySize + 'px';
+      base.style.height = joySize + 'px';
+      knob.style.width = knobSize + 'px';
+      knob.style.height = knobSize + 'px';
+      sprintBtn.style.width = sprintSize + 'px';
+      sprintBtn.style.height = sprintSize + 'px';
+      sprintBtn.style.left = `calc(${16 + joySize + gap}px + env(safe-area-inset-left))`;
+      sprintBtn.style.bottom = `calc(${16 + Math.round((joySize - sprintSize) / 2)}px + env(safe-area-inset-bottom))`;
+      const speedRect = speed ? speed.getBoundingClientRect() : { top: h - 90 };
+      const clusterBottom = Math.max(12, h - speedRect.top + gap);
+      interactBtn.style.width = masukSize + 'px';
+      interactBtn.style.height = masukSize + 'px';
+      shootBtn.style.width = shootSize + 'px';
+      shootBtn.style.height = shootSize + 'px';
+      nitroBtn.style.width = nitroSize + 'px';
+      nitroBtn.style.height = nitroSize + 'px';
+      interactBtn.style.bottom = `calc(${clusterBottom}px + env(safe-area-inset-bottom))`;
+      shootBtn.style.bottom = `calc(${clusterBottom}px + env(safe-area-inset-bottom))`;
+      nitroBtn.style.bottom = `calc(${clusterBottom}px + env(safe-area-inset-bottom))`;
+      interactBtn.style.right = 'calc(16px + env(safe-area-inset-right))';
+      shootBtn.style.right = `calc(${16 + masukSize + gap}px + env(safe-area-inset-right))`;
+      nitroBtn.style.right = `calc(${16 + masukSize + gap + shootSize + gap}px + env(safe-area-inset-right))`;
+      pauseBtn.style.width = pauseSize + 'px';
+      pauseBtn.style.height = pauseSize + 'px';
+      if (landscape) {
+        pauseBtn.style.top = 'calc(12px + env(safe-area-inset-top))';
+        pauseBtn.style.right = 'auto';
+        pauseBtn.style.left = '50%';
+        pauseBtn.style.transform = 'translateX(-50%)';
+      } else {
+        const statsRect = stats ? stats.getBoundingClientRect() : { bottom: 100 };
+        pauseBtn.style.top = `calc(${Math.round(statsRect.bottom) + gap}px + env(safe-area-inset-top))`;
+        pauseBtn.style.left = 'auto';
+        pauseBtn.style.right = 'calc(16px + env(safe-area-inset-right))';
+        pauseBtn.style.transform = 'none';
+      }
+    }
+    updateMeasuredLayout();
+    window.addEventListener('resize', updateMeasuredLayout);
+    window.addEventListener('orientationchange', updateMeasuredLayout);
+    root.__updateMeasuredLayout = updateMeasuredLayout;
 
     document.body.appendChild(root);
     refreshNitroLabel();
     refreshVisibility();
-    refreshTimer = setInterval(() => { refreshNitroLabel(); refreshVisibility(); }, 500);
+    refreshTimer = setInterval(() => { refreshNitroLabel(); refreshVisibility(); updateMeasuredLayout(); }, 500);
 
     // Hide the WASD hint on touch devices.
     const hint = document.getElementById('hint');
@@ -280,15 +312,20 @@ export function initTouch(input, opts = {}) {
       hint.style.display = 'none';
     }
 
-    // Move the story dialog into the free middle band on touch devices:
-    // the bottom is full of the stick + action buttons and the top holds
-    // the mission/stats panels + RADIO/pause, so the dialog sits at
-    // top:260px where nothing else lives. Removed again in teardown().
     dialogStyle = document.createElement('style');
     dialogStyle.id = 'touch-dialog-style';
-    dialogStyle.textContent = 'body.touch-on #dialog { top: 260px !important; bottom: auto !important; }';
+    dialogStyle.textContent =
+      'body.touch-on #dialog { top: 300px !important; bottom: auto !important; }' +
+      // Short landscape: shift the dialog right of the joystick/LARI
+      // (LARI ends x=180) and narrow it so it clears the speed panel
+      // (starts x~621), and raise it to top:260px so a 2-line dialog
+      // (up to ~100px tall) still fits inside a 360px viewport.
+      'body.touch-on.touch-short #dialog { left: 46.5% !important; width: min(360px, 48vw) !important; top: 260px !important; }';
     document.head.appendChild(dialogStyle);
     document.body.classList.add('touch-on');
+    document.body.classList.toggle('touch-landscape', window.innerWidth > window.innerHeight);
+    document.body.classList.toggle('touch-portrait', window.innerWidth <= window.innerHeight);
+    document.body.classList.toggle('touch-short', window.innerHeight < 500);
   }
 
   function teardown() {
@@ -299,11 +336,17 @@ export function initTouch(input, opts = {}) {
     resetStick();
     input.keys.sprint = false;
     input.mouse.rightDown = false;
-    if (root) { root.remove(); root = null; }
+    if (root) {
+      window.removeEventListener('resize', root.__updateMeasuredLayout);
+      window.removeEventListener('orientationchange', root.__updateMeasuredLayout);
+      root.remove(); root = null;
+    }
+    actionButtons = [];
+    pauseBtn = null;
     knob = null;
     nitroBtn = null;
     if (dialogStyle) { dialogStyle.remove(); dialogStyle = null; }
-    document.body.classList.remove('touch-on');
+    document.body.classList.remove('touch-on', 'touch-landscape', 'touch-portrait', 'touch-short');
     const hint = document.getElementById('hint');
     if (hint) hint.style.display = hintPrevDisplay;
   }
@@ -344,8 +387,16 @@ export function initTouch(input, opts = {}) {
   }
 
   // Re-detect on resize / orientation change (e.g. docked keyboard, fold).
-  window.addEventListener('resize', apply);
-  window.addEventListener('orientationchange', apply);
+  const onViewportChange = () => {
+    if (active) {
+      document.body.classList.toggle('touch-landscape', window.innerWidth > window.innerHeight);
+      document.body.classList.toggle('touch-portrait', window.innerWidth <= window.innerHeight);
+      document.body.classList.toggle('touch-short', window.innerHeight < 500);
+    }
+    apply();
+  };
+  window.addEventListener('resize', onViewportChange);
+  window.addEventListener('orientationchange', onViewportChange);
 
   // Some devices report no touch capability until the first real touch.
   firstTouchHandler = (e) => {
@@ -360,8 +411,8 @@ export function initTouch(input, opts = {}) {
     isTouchDevice,
     refresh: apply,
     destroy() {
-      window.removeEventListener('resize', apply);
-      window.removeEventListener('orientationchange', apply);
+      window.removeEventListener('resize', onViewportChange);
+      window.removeEventListener('orientationchange', onViewportChange);
       if (firstTouchHandler) window.removeEventListener('pointerdown', firstTouchHandler);
       if (canvas) {
         canvas.removeEventListener('pointerdown', onCamDown);

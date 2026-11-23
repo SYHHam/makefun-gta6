@@ -102,6 +102,7 @@ function buildDOM() {
     btnBackHelp: q('btn-back-help'),
     menuPause: q('pause-menu'),
     btnResume: q('btn-resume'),
+    btnRadioPause: q('btn-radio-pause'),
     btnHelpPause: q('btn-help-pause'),
     btnRestartMission: q('btn-restart-mission'),
     btnQuitMenu: q('btn-quit-menu'),
@@ -241,7 +242,7 @@ export function updateHUD(state, dt) {
     e.speedUnit.textContent = '';
     e.carName.textContent = 'On foot';
     e.carCondition.textContent = p.weapon ? 'Weapon: ' + p.weapon : 'Fists';
-    e.carUpgrades.textContent = 'Press E near a car to steal it';
+    e.carUpgrades.textContent = document.body.classList.contains('touch-on') ? 'Dekati mobil, ketuk MASUK' : 'Press E near a car to steal it';
   }
 
   // Radio, bottom.
@@ -257,7 +258,7 @@ export function updateHUD(state, dt) {
   // never comes back. Full instructions live in the Help screen.
   if (!introHintShown) {
     introHintShown = true;
-    showHint('WASD bergerak · E masuk mobil · Esc pause', 5);
+    showHint(document.body.classList.contains('touch-on') ? 'Joystick bergerak · ketuk MASUK untuk masuk mobil' : 'WASD bergerak · E masuk mobil · Esc pause', 5);
   }
   if (hintTimer > 0 && dt) {
     hintTimer -= dt;
@@ -312,6 +313,7 @@ export function showMenu(kind, data, callbacks) {
   } else if (kind === 'pause') {
     pauseCallbacks = cb;
     wireButton(e.btnResume, 'Resume', cb.onResume || null);
+    wireButton(e.btnRadioPause, d.radioOn === false ? 'Radio: Off' : 'Radio: On', cb.onRadioToggle || null);
     wireButton(e.btnHelpPause, 'Controls', () => {
       showMenu('help', {}, { onBack: () => showMenu('pause', {}, pauseCallbacks || {}) });
     });

@@ -64,6 +64,29 @@ function modelDef(model) {
   return def;
 }
 
+// Shared close-up detail assets: one geometry / material each, reused by
+// every car, so the extra parts cost no extra uploads.
+const glassMat = new THREE.MeshStandardMaterial({ color: 0x8fb8d8, roughness: 0.2, metalness: 0.55 });
+const darkTrimMat = new THREE.MeshStandardMaterial({ color: 0x22262c, roughness: 0.6, metalness: 0.3 });
+const mirrorGeo = new THREE.BoxGeometry(0.2, 0.12, 0.34);
+
+// Soft blob shadow under the car: grounds it at close range where the
+// shadow map alone reads as a faint smudge.
+const shadowTex = (() => {
+  const c = document.createElement('canvas');
+  c.width = 128;
+  c.height = 128;
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(64, 64, 8, 64, 64, 62);
+  grad.addColorStop(0, 'rgba(0,0,0,0.42)');
+  grad.addColorStop(0.7, 'rgba(0,0,0,0.22)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 128, 128);
+  return new THREE.CanvasTexture(c);
+})();
+const shadowMat = new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false });
+
 function box(w, h, d, color, x = 0, y = 0, z = 0) {
   const mesh = new THREE.Mesh(
     new THREE.BoxGeometry(w, h, d),
@@ -113,17 +136,41 @@ export function buildCarMesh(model) {
   const body = box(W, H, L, def.color, 0, bodyY, 0);
   group.add(body);
 
+  // Soft contact shadow, always under the car.
+  const blob = new THREE.Mesh(new THREE.PlaneGeometry(W + 1.4, L + 1.4), shadowMat);
+  blob.rotation.x = -Math.PI / 2;
+  blob.position.y = 0.03;
+  group.add(blob);
+
   // Cabin: coupe and muscle sit it back, sedans centre it, pickup has a cab + bed.
   const cabinColor = 0x1a2028;
+  const cabinZ = def.kind === 'pickup' ? -0.3 : def.kind === 'coupe' ? -0.25 : def.kind === 'muscle' ? -0.2 : 0;
   if (def.kind === 'pickup') {
     const cab = box(W * 0.92, 0.62, def.cabinLength, cabinColor, 0, bodyY + H / 2 + 0.28, -0.3);
     group.add(cab);
     const bedWall = box(W * 0.96, 0.3, 1.5, def.color, 0, bodyY + H / 2 + 0.12, 1.55);
     group.add(bedWall);
   } else {
-    const cabinZ = def.kind === 'coupe' ? -0.25 : def.kind === 'muscle' ? -0.2 : 0;
     const cabin = box(W * 0.86, 0.58, def.cabinLength, cabinColor, 0, bodyY + H / 2 + 0.26, cabinZ);
     group.add(cabin);
+  }
+
+  // Windshield: pale raked glass across the cabin front, so the cabin
+  // reads as glass from the front instead of a black slab.
+  const windshield = new THREE.Mesh(new THREE.BoxGeometry(W * 0.8, 0.5, 0.06), glassMat);
+  windshield.position.set(0, bodyY + H / 2 + 0.28, cabinZ + def.cabinLength / 2 + 0.02);
+  windshield.rotation.x = -0.12;
+  group.add(windshield);
+
+  // Front grille + side mirrors: the two details the eye looks for
+  // first on a car at street distance.
+  const grille = new THREE.Mesh(new THREE.BoxGeometry(W * 0.62, 0.16, 0.08), darkTrimMat);
+  grille.position.set(0, bodyY - 0.02, L / 2 + 0.02);
+  group.add(grille);
+  for (const sx of [-1, 1]) {
+    const mirror = new THREE.Mesh(mirrorGeo, darkTrimMat);
+    mirror.position.set(sx * (W / 2 + 0.1), bodyY + H / 2 + 0.32, cabinZ + def.cabinLength / 2 - 0.3);
+    group.add(mirror);
   }
 
   // Muscle hood scoop, pickup bed rails: small model flavour, no extra cost.

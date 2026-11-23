@@ -378,8 +378,13 @@ function openStartMenu() {
 function openPauseMenu() {
   screen = 'paused';
   saveGame(state);
-  showMenu('pause', {}, {
+  showMenu('pause', { radioOn: state.radioOn }, {
     onResume: () => startPlaying(),
+    onRadioToggle: () => {
+      state.radioOn = !state.radioOn;
+      setRadio(state.radioOn);
+      openPauseMenu();
+    },
     onRestartMission: () => {
       if (state.mission) retryMission(state);
       startPlaying();
@@ -529,11 +534,15 @@ function updatePlayerInCar(dt) {
 function applyShot(n) {
   const sp = city.spawnPoints || {};
   if (n === 1) {
-    // Cover: police chase, mission 3 stage 2, wanted 2, fast on the coast road.
-    playerCar.mesh.position.set(0, 0, 460);
-    playerCar.heading = Math.PI / 2;
+    // Cover: police chase, mission 3 stage 2, wanted 2, fast down the
+    // Glasspoint main road (x=100) heading north. Same open framing as
+    // shot 2 (road stretching ahead, buildings both sides, traffic,
+    // palms) so no single facade fills the frame; the chase HUD
+    // (wanted 2, dispatch, mission dialog) carries the chase story.
+    playerCar.mesh.position.set(100, 0, -200);
+    playerCar.heading = 0;
     playerCar.speed = 30;
-    player.pos.set(0, 0, 460);
+    player.pos.set(100, 0, -200);
     state.wanted = 2;
     startMission(state, 'm3');
     state.mission.stage = 1;

@@ -35,6 +35,160 @@ function lambert(color) {
   return new THREE.MeshLambertMaterial({ color });
 }
 
+// Procedural canvas textures: cheap offline detail, no network assets.
+// One small canvas each, reused by every road / slab / lawn that needs
+// it, so the ground stops reading as one flat sheet of colour.
+function canvasTexture(size, draw, repeatX = 1, repeatY = 1) {
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  draw(canvas.getContext('2d'), size);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(repeatX, repeatY);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return tex;
+}
+
+function speckle(ctx, size, count, colors, rand, minR = 0.6, maxR = 2.2) {
+  for (let i = 0; i < count; i += 1) {
+    ctx.fillStyle = colors[Math.floor(rand() * colors.length)];
+    ctx.globalAlpha = 0.12 + rand() * 0.25;
+    const r = minR + rand() * (maxR - minR);
+    ctx.beginPath();
+    ctx.arc(rand() * size, rand() * size, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawAsphalt(ctx, size, rand) {
+  ctx.fillStyle = '#33363b';
+  ctx.fillRect(0, 0, size, size);
+  // Faint darker patches: repaired asphalt, oil stains, tyre wear.
+  for (let i = 0; i < 7; i += 1) {
+    ctx.fillStyle = rand() < 0.5 ? '#2b2e33' : '#3e4148';
+    ctx.globalAlpha = 0.35;
+    ctx.beginPath();
+    ctx.ellipse(rand() * size, rand() * size, 20 + rand() * 40, 14 + rand() * 30, rand() * Math.PI, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  speckle(ctx, size, 900, ['#4a4e55', '#26292e', '#55595f'], rand, 0.6, 1.8);
+}
+
+function drawPavement(ctx, size, rand) {
+  ctx.fillStyle = '#b3ac9c';
+  ctx.fillRect(0, 0, size, size);
+  // Paving joints every 64px (large slabs, half the line density), kept
+  // very faint and thin so the slab reads as one paved surface, not a
+  // grid; a few softly stained slabs.
+  ctx.strokeStyle = 'rgba(90, 84, 70, 0.12)';
+  ctx.lineWidth = 1;
+  for (let p = 0; p <= size; p += 64) {
+    ctx.beginPath(); ctx.moveTo(p, 0); ctx.lineTo(p, size); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, p); ctx.lineTo(size, p); ctx.stroke();
+  }
+  for (let i = 0; i < 3; i += 1) {
+    ctx.fillStyle = rand() < 0.5 ? '#a89f8d' : '#b8b09e';
+    ctx.globalAlpha = 0.15;
+    ctx.fillRect(Math.floor(rand() * 2) * 64, Math.floor(rand() * 2) * 64, 64, 64);
+  }
+  ctx.globalAlpha = 1;
+  speckle(ctx, size, 500, ['#8a8272', '#c8c0ae', '#7a7264'], rand, 0.6, 1.6);
+}
+
+function drawGround(ctx, size, rand) {
+  // Mottled city earth: grey-tan-olive blotches, no single flat tone.
+  ctx.fillStyle = '#8f8a7a';
+  ctx.fillRect(0, 0, size, size);
+  const blotch = ['#7d7a6c', '#9a917e', '#857a68', '#8a7f6a', '#97917f'];
+  for (let i = 0; i < 26; i += 1) {
+    ctx.fillStyle = blotch[Math.floor(rand() * blotch.length)];
+    ctx.globalAlpha = 0.22;
+    ctx.beginPath();
+    ctx.ellipse(rand() * size, rand() * size, 18 + rand() * 42, 14 + rand() * 32, rand() * Math.PI, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  speckle(ctx, size, 700, ['#6e6a5c', '#a39a86', '#7a7264'], rand, 0.6, 2);
+}
+
+function drawGrass(ctx, size, rand) {
+  ctx.fillStyle = '#5d9a46';
+  ctx.fillRect(0, 0, size, size);
+  const blotch = ['#4c8340', '#6fae52', '#578f3e'];
+  for (let i = 0; i < 14; i += 1) {
+    ctx.fillStyle = blotch[Math.floor(rand() * blotch.length)];
+    ctx.globalAlpha = 0.3;
+    ctx.beginPath();
+    ctx.ellipse(rand() * size, rand() * size, 12 + rand() * 26, 10 + rand() * 20, rand() * Math.PI, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  speckle(ctx, size, 500, ['#3f7034', '#7fb85e', '#86c468'], rand, 0.6, 1.8);
+}
+
+function drawSand(ctx, size, rand) {
+  ctx.fillStyle = '#e2c892';
+  ctx.fillRect(0, 0, size, size);
+  speckle(ctx, size, 800, ['#c8a86a', '#f2e2b8', '#d8bc82'], rand, 0.6, 1.8);
+}
+
+function drawPlaza(ctx, size, rand) {
+  // Warm stone paving, NOT a checkerboard: one base tone, per-tile
+  // shading kept within a few percent, staggered (running-bond) joints
+  // so no continuous grid lines run across the slab, and joints drawn
+  // thin and faint. A few tiles get a soft darker/lighter wash at low
+  // alpha, plus large soft blotches, so the surface reads as worn
+  // paving from the chase-camera distance instead of a placeholder grid.
+  ctx.fillStyle = '#a89a80';
+  ctx.fillRect(0, 0, size, size);
+  const tones = ['#a89a80', '#a59b83', '#ab9d85', '#a2977e', '#a79c86', '#a89e87'];
+  const cell = size / 4;
+  for (let iz = 0; iz < 4; iz += 1) {
+    const off = (iz % 2) * (cell / 2);
+    for (let ix = -1; ix < 5; ix += 1) {
+      ctx.fillStyle = tones[Math.floor(rand() * tones.length)];
+      ctx.fillRect(ix * cell + off, iz * cell, cell, cell);
+    }
+  }
+  // Soft large blotches break up any remaining regularity.
+  for (let i = 0; i < 8; i += 1) {
+    ctx.fillStyle = rand() < 0.5 ? '#978b73' : '#b3a888';
+    ctx.globalAlpha = 0.10;
+    ctx.beginPath();
+    ctx.ellipse(rand() * size, rand() * size, 16 + rand() * 30, 12 + rand() * 22, rand() * Math.PI, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  // A few individual tiles slightly darker / lighter, low alpha only.
+  for (let i = 0; i < 4; i += 1) {
+    ctx.fillStyle = rand() < 0.5 ? '#948a74' : '#b0a488';
+    ctx.globalAlpha = 0.12;
+    ctx.fillRect(Math.floor(rand() * 4) * cell, Math.floor(rand() * 4) * cell, cell, cell);
+  }
+  ctx.globalAlpha = 1;
+  // Staggered joints: horizontal lines faint and continuous, vertical
+  // joints offset per row so they never form one unbroken grid.
+  ctx.strokeStyle = 'rgba(80, 72, 58, 0.20)';
+  ctx.lineWidth = 1;
+  for (let p = 0; p <= size; p += cell) {
+    ctx.beginPath(); ctx.moveTo(0, p); ctx.lineTo(size, p); ctx.stroke();
+  }
+  for (let iz = 0; iz < 4; iz += 1) {
+    const off = (iz % 2) * (cell / 2);
+    for (let ix = 0; ix <= 4; ix += 1) {
+      const x = ix * cell + off;
+      if (x <= 0 || x >= size) continue;
+      ctx.beginPath(); ctx.moveTo(x, iz * cell); ctx.lineTo(x, (iz + 1) * cell); ctx.stroke();
+    }
+  }
+  speckle(ctx, size, 600, ['#8a7f6a', '#b8ac92'], rand, 0.6, 1.6);
+}
+
 function districtAt(x, z) {
   const d = CONFIG.DISTRICTS;
   if (z >= d.marAzul.bounds.minZ) return 'marAzul';
@@ -69,18 +223,49 @@ export function buildCity(scene) {
   };
 
   // Shared materials, one per look, reused by every building.
-  const matGround = lambert(C.ground);
-  const matAsphaltMain = lambert(C.asphaltMain);
-  const matAsphaltLocal = lambert(C.asphaltLocal);
-  const matSidewalk = lambert(C.sidewalk);
-  const matSand = lambert(C.sand);
+  // Roads get two asphalt materials (vertical / horizontal) because the
+  // texture repeat runs along the road in each orientation.
+  const asphaltTexV = canvasTexture(256, (ctx, s) => drawAsphalt(ctx, s, random), 1, 48);
+  const asphaltTexH = asphaltTexV.clone();
+  asphaltTexH.repeat.set(48, 1);
+  asphaltTexH.needsUpdate = true;
+  const matGround = new THREE.MeshLambertMaterial({
+    map: canvasTexture(256, (ctx, s) => drawGround(ctx, s, random), 14, 14),
+  });
+  const matAsphaltMainV = new THREE.MeshLambertMaterial({ map: asphaltTexV });
+  const matAsphaltMainH = new THREE.MeshLambertMaterial({ map: asphaltTexH });
+  const matAsphaltLocalV = new THREE.MeshLambertMaterial({ map: asphaltTexV, color: 0xbfc0c4 });
+  const matAsphaltLocalH = new THREE.MeshLambertMaterial({ map: asphaltTexH, color: 0xbfc0c4 });
+  const matSidewalk = new THREE.MeshLambertMaterial({
+    map: canvasTexture(128, (ctx, s) => drawPavement(ctx, s, random), 36, 36),
+  });
+  const matSand = new THREE.MeshLambertMaterial({
+    map: canvasTexture(256, (ctx, s) => drawSand(ctx, s, random), 30, 2),
+  });
+  const matGrass = new THREE.MeshLambertMaterial({
+    map: canvasTexture(128, (ctx, s) => drawGrass(ctx, s, random), 3, 3),
+  });
+  const matPlaza = new THREE.MeshLambertMaterial({
+    map: canvasTexture(128, (ctx, s) => drawPlaza(ctx, s, random), 6, 6),
+  });
   const matRoof = lambert(C.roof);
   const matGlass = new THREE.MeshLambertMaterial({ color: C.buildingGlass });
   const matGlassDark = new THREE.MeshLambertMaterial({ color: C.buildingGlassDark });
   const matPastel = C.buildingPastel.map((c) => lambert(c));
   const matBrick = C.buildingBrick.map((c) => lambert(c));
   const matWarehouse = C.warehouse.map((c) => lambert(c));
+  // Bolder facades: teal, coral, mustard, blue, pink, purple, green,
+  // cream. Mixed into commercial and houses so blocks stop reading as
+  // one brown-grey mass.
+  const matFacadeBold = [
+    0xe8542e, 0x2e8a7a, 0xf2c230, 0x3a7fd8,
+    0xe84c7a, 0x7a5fc8, 0x3f9a4a, 0xe8e4da,
+  ].map((c) => lambert(c));
+  const trimColors = [0xf2ead8, 0x2a2e35, 0xc8552e, 0x2e7fc8];
   const matLine = new THREE.MeshBasicMaterial({ color: C.roadLine });
+  const matEdgeLine = new THREE.MeshLambertMaterial({ color: 0xf0e6c8 });
+  const matCurb = lambert(0x8f8a80);
+  const matWindowLit = new THREE.MeshBasicMaterial({ color: 0xffc978 });
 
   // Ground slab for the whole city.
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(W.size, W.size), matGround);
@@ -88,36 +273,75 @@ export function buildCity(scene) {
   ground.receiveShadow = true;
   group.add(ground);
 
-  // Roads: one dark plane per centreline, main roads wider and darker.
-  // Centre dashes: thin bright strips, skipped at intersections.
+  // Roads: one textured asphalt plane per centreline, main roads wider.
+  // Centre dashes on EVERY road (main: long, local: short), skipped at
+  // intersections; solid edge lines and raised curbs along each block
+  // segment. Dashes, edge lines and curbs are one instanced mesh each.
+  const spotDummy = new THREE.Object3D();
+  function drawInstancedBox(spots, material) {
+    if (spots.length === 0) return;
+    const mesh = new THREE.InstancedMesh(unitBox, material, spots.length);
+    spots.forEach((s, i) => {
+      spotDummy.position.set(s.x, s.y, s.z);
+      spotDummy.rotation.set(0, s.ry || 0, 0);
+      spotDummy.scale.set(s.w, s.h, s.d);
+      spotDummy.updateMatrix();
+      mesh.setMatrixAt(i, spotDummy.matrix);
+    });
+    mesh.receiveShadow = true;
+    group.add(mesh);
+  }
+  const dashSpots = [];
+  const edgeSpots = [];
+  const curbSpots = [];
+  const bounds = [-W.half, ...lines, W.half];
   for (const line of lines) {
     const width = roadWidthAt(line);
-    const mat = width === W.mainRoadWidth ? matAsphaltMain : matAsphaltLocal;
-    const vertical = new THREE.Mesh(new THREE.PlaneGeometry(width, W.size), mat);
+    const isMain = width === W.mainRoadWidth;
+    const matV = isMain ? matAsphaltMainV : matAsphaltLocalV;
+    const matH = isMain ? matAsphaltMainH : matAsphaltLocalH;
+    const vertical = new THREE.Mesh(new THREE.PlaneGeometry(width, W.size), matV);
     vertical.rotation.x = -Math.PI / 2;
     vertical.position.set(line, 0.02, 0);
     vertical.receiveShadow = true;
     group.add(vertical);
-    const horizontal = new THREE.Mesh(new THREE.PlaneGeometry(W.size, width), mat);
+    const horizontal = new THREE.Mesh(new THREE.PlaneGeometry(W.size, width), matH);
     horizontal.rotation.x = -Math.PI / 2;
     horizontal.position.set(0, 0.02, line);
     horizontal.receiveShadow = true;
     group.add(horizontal);
-    if (width === W.mainRoadWidth) {
-      for (let t = -550; t < 550; t += 50) {
-        const onCross = lines.some((l) => Math.abs(t - l) < 16);
-        if (onCross) continue;
-        const dashV = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 14), matLine);
-        dashV.rotation.x = -Math.PI / 2;
-        dashV.position.set(line, 0.04, t);
-        group.add(dashV);
-        const dashH = new THREE.Mesh(new THREE.PlaneGeometry(14, 0.6), matLine);
-        dashH.rotation.x = -Math.PI / 2;
-        dashH.position.set(t, 0.04, line);
-        group.add(dashH);
+    // Centre dashes, both orientations.
+    const step = isMain ? 50 : 30;
+    const dashLen = isMain ? 14 : 7;
+    const dashW = isMain ? 0.6 : 0.5;
+    const clear = isMain ? 16 : 10;
+    for (let t = -550; t < 550; t += step) {
+      const onCross = lines.some((l) => Math.abs(t - l) < clear);
+      if (onCross) continue;
+      dashSpots.push({ x: line, y: 0.05, z: t, w: dashW, h: 0.1, d: dashLen });
+      dashSpots.push({ x: t, y: 0.05, z: line, w: dashLen, h: 0.1, d: dashW });
+    }
+    // Solid edge lines just inside each road edge, full length.
+    for (const s of [-1, 1]) {
+      edgeSpots.push({ x: line + s * (width / 2 - 0.7), y: 0.05, z: 0, w: 0.35, h: 0.1, d: W.size });
+      edgeSpots.push({ x: 0, y: 0.05, z: line + s * (width / 2 - 0.7), w: W.size, h: 0.1, d: 0.35 });
+    }
+    // Raised curbs per block segment (gap at intersections), both sides.
+    for (let b = 0; b < bounds.length - 1; b += 1) {
+      const c0 = bounds[b];
+      const c1 = bounds[b + 1];
+      const len = (c1 - c0) - 4;
+      if (len <= 0) continue;
+      const mid = (c0 + c1) / 2;
+      for (const s of [-1, 1]) {
+        curbSpots.push({ x: line + s * (width / 2 + 0.35), y: 0.17, z: mid, w: 0.7, h: 0.35, d: len });
+        curbSpots.push({ x: mid, y: 0.17, z: line + s * (width / 2 + 0.35), w: len, h: 0.35, d: 0.7 });
       }
     }
   }
+  drawInstancedBox(dashSpots, matLine);
+  drawInstancedBox(edgeSpots, matEdgeLine);
+  drawInstancedBox(curbSpots, matCurb);
 
   // Sidewalks: one light slab per block, inset from the road edge.
   for (let ix = 0; ix < 5; ix += 1) {
@@ -149,6 +373,9 @@ export function buildCity(scene) {
   // after the loop so hundreds of windows / AC units / tanks cost ~5
   // draw calls instead of hundreds.
   const windowSpots = [];
+  const litWindowSpots = [];
+  const trimSpots = [];
+  const signSpots = [];
   const acSpots = [];
   const tankSpots = [];
   const antennaSpots = [];
@@ -197,20 +424,54 @@ export function buildCity(scene) {
       cap2.castShadow = false;
       group.add(cap2);
     }
+    // Contrasting cornice trim at the top edge: breaks the box silhouette.
+    trimSpots.push({
+      x, y: h - 0.2, z, w: w + 0.7, d: d + 0.7,
+      color: pick(random, trimColors),
+    });
+    // Coloured shop sign board on the street face of commercial blocks.
+    // Kept sign-sized (max 9 m wide), not a whole facade slab.
+    if (type === 'commercial') {
+      signSpots.push({
+        x, y: Math.min(h - 1.6, 6.8), z: z + d / 2 + 0.32,
+        w: Math.min(w * 0.38, 9), color: pick(random, C.neon),
+      });
+    }
     // Window bands on the south, north and west faces (+z, -z, -x), plus
     // a side band on towers, so facades never read as blank slabs from
     // the spawn view (which looks south-east at north/west faces).
-    windowSpots.push({ x, y: h * 0.55, z: z + d / 2 + 0.18, w: w * 0.8, h: h * 0.5, ry: 0 });
-    windowSpots.push({ x, y: h * 0.55, z: z - d / 2 - 0.18, w: w * 0.8, h: h * 0.5, ry: 0 });
-    windowSpots.push({ x: x - w / 2 - 0.18, y: h * 0.55, z, w: d * 0.8, h: h * 0.5, ry: Math.PI / 2 });
-    if (type === 'tall') {
-      windowSpots.push({ x: x + w / 2 + 0.18, y: h * 0.55, z, w: d * 0.8, h: h * 0.6, ry: Math.PI / 2 });
+    // About a third of the bands are lit warm: golden-hour windows.
+    // Band height jitters per face so rows do not line up everywhere.
+    function pushWindow(px, py, pz, pw, ph, ry) {
+      // Lit bands are smaller and offset to one side of the dark band,
+      // so they read as lit rooms, not one glowing slab.
+      if (random() < 0.35) {
+        const lw = pw * 0.5;
+        const off = pw * 0.18;
+        litWindowSpots.push({
+          x: ry === 0 ? px - off : px,
+          y: py, z: ry === 0 ? pz : pz - off,
+          w: lw, h: ph * 0.55, ry,
+        });
+        return;
+      }
+      windowSpots.push({ x: px, y: py, z: pz, w: pw, h: ph, ry });
     }
-    // One roof prop per building.
+    pushWindow(x, h * 0.55, z + d / 2 + 0.18, w * 0.8, h * (0.42 + random() * 0.16), 0);
+    pushWindow(x, h * 0.55, z - d / 2 - 0.18, w * 0.8, h * (0.42 + random() * 0.16), 0);
+    pushWindow(x - w / 2 - 0.18, h * 0.55, z, d * 0.8, h * (0.42 + random() * 0.16), Math.PI / 2);
+    if (type === 'tall') {
+      pushWindow(x + w / 2 + 0.18, h * 0.55, z, d * 0.8, h * (0.48 + random() * 0.16), Math.PI / 2);
+    }
+    // One roof prop per building; tall towers get a second AC unit so
+    // their roofs are not bare from the high camera angles.
     const roll = random();
     if (roll < 0.4) acSpots.push({ x: x + w * 0.25, y: h + 1.3, z: z - d * 0.25 });
     else if (roll < 0.7) tankSpots.push({ x: x - w * 0.25, y: h + 1.8, z: z + d * 0.2 });
     else antennaSpots.push({ x: x + w * 0.2, y: h + 3.5, z: z - d * 0.2 });
+    if (type === 'tall' && random() < 0.6) {
+      acSpots.push({ x: x - w * 0.25, y: h + 1.3, z: z + d * 0.25 });
+    }
     // Ground-floor awning for shops / houses, balcony for houses.
     if ((type === 'commercial' || type === 'house') && (forceAwning || random() < 0.55)) {
       awningSpots.push({ x, y: 3.4, z: z + d / 2 + 1.8, w: w * 0.85, color: pick(random, C.awning) });
@@ -276,7 +537,9 @@ export function buildCity(scene) {
           w = range(random, 26, 38);
           d = range(random, 22, 30);
           h = range(random, target.commercialHeight.min, target.commercialHeight.max);
-          material = district === 'cobreViejo' ? pick(random, matBrick) : pick(random, matPastel);
+          // Commercial blocks go bold more than half the time.
+          material = random() < 0.55 ? pick(random, matFacadeBold)
+            : district === 'cobreViejo' ? pick(random, matBrick) : pick(random, matPastel);
         } else if (type === 'warehouse') {
           w = range(random, 44, 58);
           d = range(random, 26, 32);
@@ -286,7 +549,9 @@ export function buildCity(scene) {
           w = range(random, 16, 24);
           d = range(random, 14, 20);
           h = range(random, target.houseHeight.min, target.houseHeight.max);
-          material = district === 'cobreViejo' ? pick(random, matPastel) : pick(random, matBrick);
+          // Houses go bold about a third of the time.
+          material = random() < 0.3 ? pick(random, matFacadeBold)
+            : district === 'cobreViejo' ? pick(random, matPastel) : pick(random, matBrick);
         }
         addBuilding(plot.x, plot.z, w, d, h, material, type, district, false);
         built += 1;
@@ -388,7 +653,7 @@ export function buildCity(scene) {
   // Plaza paving: a darker stone slab over the central block so the
   // ground between spawn and fountain is not one flat tan sheet,
   // plus low planters scattered across the plaza.
-  const paving = new THREE.Mesh(new THREE.PlaneGeometry(170, 170), lambert(0x9a8f7a));
+  const paving = new THREE.Mesh(new THREE.PlaneGeometry(170, 170), matPlaza);
   paving.rotation.x = -Math.PI / 2;
   paving.position.set(0, 0.035, 0);
   paving.receiveShadow = true;
@@ -441,6 +706,17 @@ export function buildCity(scene) {
   }
   instancedSpots(windowSpots, unitBox, matWindow,
     (dm, s) => dm.scale.set(s.w, s.h, 0.35));
+  // Lit windows glow warm against the dusk facades.
+  instancedSpots(litWindowSpots, unitBox, matWindowLit,
+    (dm, s) => dm.scale.set(s.w, s.h, 0.35));
+  // Cornice trim rings, coloured per building.
+  instancedSpots(trimSpots, unitBox, lambert(0xffffff),
+    (dm, s) => dm.scale.set(s.w, 0.7, s.d),
+    (s) => new THREE.Color(s.color));
+  // Shop sign boards on commercial street faces.
+  instancedSpots(signSpots, unitBox, new THREE.MeshBasicMaterial({ color: 0xffffff }),
+    (dm, s) => dm.scale.set(s.w, 1.4, 0.3),
+    (s) => new THREE.Color(s.color));
   instancedSpots(acSpots, unitBox, lambert(0x9aa0a8),
     (dm) => dm.scale.set(2, 1, 1.5));
   instancedSpots(tankSpots, new THREE.CylinderGeometry(1.2, 1.2, 2, 8), lambert(0x7a8a96),
@@ -475,8 +751,7 @@ export function buildCity(scene) {
       }
     }
   }
-  // Pocket gardens: green lawn slabs.
-  const matGrass = lambert(C.grass);
+  // Pocket gardens: green lawn slabs (textured matGrass, defined above).
   for (const g of gardenSpots) {
     const lawn = new THREE.Mesh(new THREE.PlaneGeometry(22, 22), matGrass);
     lawn.rotation.x = -Math.PI / 2;
@@ -528,7 +803,7 @@ export function buildCity(scene) {
 
   // ---- Roundabouts on two big intersections ----
   for (const rb of [{ x: 100, z: 100 }, { x: -300, z: 300 }]) {
-    const disc = new THREE.Mesh(new THREE.CylinderGeometry(11, 11, 0.3, 20), matAsphaltMain);
+    const disc = new THREE.Mesh(new THREE.CylinderGeometry(11, 11, 0.3, 20), matAsphaltMainV);
     disc.position.set(rb.x, 0.15, rb.z);
     disc.receiveShadow = true;
     group.add(disc);
@@ -543,12 +818,14 @@ export function buildCity(scene) {
     group.add(top);
   }
 
-  // ---- Zebra crossings at four main intersections ----
+  // ---- Zebra crossings at every main-road intersection ----
   const zebraSpots = [];
-  for (const zx of [{ x: -100, z: 100 }, { x: 100, z: -100 }, { x: 100, z: 100 }, { x: -300, z: -100 }]) {
-    for (let i = 0; i < 7; i += 1) {
-      zebraSpots.push({ x: zx.x - 9 + i * 3, z: zx.z + 16, w: 0.9, d: 3.5 });
-      zebraSpots.push({ x: zx.x + 16, z: zx.z - 9 + i * 3, w: 3.5, d: 0.9 });
+  for (const mx of [-100, 100]) {
+    for (const lz of lines) {
+      for (let i = 0; i < 7; i += 1) {
+        zebraSpots.push({ x: mx - 9 + i * 3, z: lz + 16, w: 0.9, d: 3.5 });
+        zebraSpots.push({ x: mx + 16, z: lz - 9 + i * 3, w: 3.5, d: 0.9 });
+      }
     }
   }
   const zebraMesh = new THREE.InstancedMesh(unitBox, lambert(0xf2f2ee), zebraSpots.length);

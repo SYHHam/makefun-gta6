@@ -45,23 +45,27 @@ html, body {
   position: absolute;
   top: 16px;
   left: 16px;
-  background: rgba(10, 16, 26, 0.72);
+  background: rgba(10, 16, 26, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   border-left: 4px solid #f2c230;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
   padding: 10px 14px;
   max-width: 340px;
   border-radius: 0 6px 6px 0;
 }
-#mission-title { font-size: 20px; font-weight: 800; letter-spacing: 0.5px; }
+#mission-title { font-size: 20px; font-weight: 800; letter-spacing: 0.5px; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8); }
 #mission-stage { font-size: 12px; color: #9fb4c8; margin-top: 2px; }
-#mission-objective { font-size: 14px; color: #ffd97a; margin-top: 6px; }
+#mission-objective { font-size: 14px; font-weight: 700; color: #ffd97a; margin-top: 6px; }
 
 /* Police dispatch, left centre */
 #dispatch-panel {
   position: absolute;
   top: 38%;
   left: 16px;
-  background: rgba(10, 16, 26, 0.72);
+  background: rgba(10, 16, 26, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   border-left: 4px solid #e5534b;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
   padding: 10px 14px;
   width: 230px;
   border-radius: 0 6px 6px 0;
@@ -76,12 +80,14 @@ html, body {
   top: 16px;
   right: 16px;
   text-align: right;
-  background: rgba(10, 16, 26, 0.72);
+  background: rgba(10, 16, 26, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
   padding: 10px 14px;
   border-radius: 6px;
   min-width: 200px;
 }
-#money { font-size: 24px; font-weight: 800; color: #7ee2a8; }
+#money { font-size: 24px; font-weight: 800; color: #8ff5b8; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8); }
 #wanted-stars { font-size: 22px; letter-spacing: 4px; margin-top: 2px; }
 #wanted-stars .star { color: #3a4452; }
 #wanted-stars .star.lit { color: #ffd23a; text-shadow: 0 0 8px rgba(255, 210, 58, 0.8); }
@@ -186,7 +192,9 @@ html, body {
   right: 16px;
   bottom: 16px;
   text-align: right;
-  background: rgba(10, 16, 26, 0.72);
+  background: rgba(10, 16, 26, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
   padding: 10px 16px;
   border-radius: 6px;
 }
@@ -203,7 +211,8 @@ html, body {
   left: 50%;
   transform: translateX(-50%);
   font-size: 13px;
-  background: rgba(10, 16, 26, 0.6);
+  background: rgba(10, 16, 26, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   padding: 6px 14px;
   border-radius: 20px;
 }
@@ -240,7 +249,8 @@ html, body {
   font-size: 13px;
   font-weight: 600;
   color: #fff;
-  background: rgba(10, 16, 26, 0.72);
+  background: rgba(10, 16, 26, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   padding: 6px 14px;
   border-radius: 20px;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
@@ -249,6 +259,43 @@ html, body {
   z-index: 6;
 }
 #hint.hint-fade { opacity: 0; }
+
+/* Touch-only layout: put the map in the left HUD column and reserve the
+   lower corners for the virtual controls. The controls measure these panels. */
+body.touch-on #dispatch-panel { display: none !important; }
+body.touch-on #radio-bar { display: none; }
+body:not(.touch-on) .touch-help { display: none; }
+body.touch-on #minimap-wrap {
+  left: calc(16px + env(safe-area-inset-left));
+  top: 150px;
+  bottom: auto;
+  width: 120px;
+}
+body.touch-on #minimap {
+  width: 120px;
+  height: 120px;
+}
+body.touch-on #minimap-district { font-size: 10px; letter-spacing: 1px; margin-top: 4px; }
+body.touch-on #speed-panel {
+  right: calc(16px + env(safe-area-inset-right));
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  padding: 8px 10px;
+}
+body.touch-on #speed-value { font-size: 30px; }
+body.touch-on #stats-panel {
+  right: calc(16px + env(safe-area-inset-right));
+  top: calc(16px + env(safe-area-inset-top));
+  padding: 8px 10px;
+}
+body.touch-on #money { font-size: 20px; }
+body.touch-on.touch-landscape #minimap-wrap { top: 150px; }
+/* Short landscape (phone landscape, e.g. 800x360): the mission panel is
+   compact (~100px), so the map must shrink to 80px at top:110px, or it
+   meets the 100px joystick coming up from the bottom. Specificity
+   (0,2,1) beats the max-width:900px rule below (0,1,1). */
+body.touch-on.touch-short #minimap-wrap { top: 110px; width: 80px; }
+body.touch-on.touch-short #minimap { width: 80px; height: 80px; }
+
 
 /* Branch choice is built by main.js with inline styles (bottom:140px,
    which sits on top of the dialogue box). The !important rules below are
@@ -346,6 +393,8 @@ html, body {
 }
 
 @media (max-width: 900px) {
+  body.touch-on #minimap-wrap { top: 124px; width: 104px; }
+  body.touch-on #minimap { width: 104px; height: 104px; }
   /* Top row: mission (left) and stats (right) must not meet in the middle.
      Mission caps at 180px, stats shrinks to ~150px, leaving a clear gap. */
   #mission-panel { max-width: 180px; padding: 8px 10px; }

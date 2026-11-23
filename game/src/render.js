@@ -18,7 +18,7 @@ export function initRenderer(canvas) {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.15;
+  renderer.toneMappingExposure = 1.22;
   return renderer;
 }
 
@@ -27,7 +27,22 @@ export function initRenderer(canvas) {
 // hemisphere light so shadows never go black. Still bright and readable.
 export function createScene() {
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(CONFIG.COLORS.sky);
+  // Golden-hour sky gradient: deep orange overhead fading to pale peach
+  // at the horizon, so the sky has depth instead of one flat wash.
+  const skyCanvas = document.createElement('canvas');
+  skyCanvas.width = 4;
+  skyCanvas.height = 256;
+  const skyCtx = skyCanvas.getContext('2d');
+  const skyGrad = skyCtx.createLinearGradient(0, 0, 0, 256);
+  skyGrad.addColorStop(0, '#e87f3d');
+  skyGrad.addColorStop(0.45, '#ffab66');
+  skyGrad.addColorStop(0.75, '#ffc98f');
+  skyGrad.addColorStop(1, '#ffe3b8');
+  skyCtx.fillStyle = skyGrad;
+  skyCtx.fillRect(0, 0, 4, 256);
+  const skyTex = new THREE.CanvasTexture(skyCanvas);
+  skyTex.colorSpace = THREE.SRGBColorSpace;
+  scene.background = skyTex;
   scene.fog = new THREE.Fog(CONFIG.COLORS.fog, CONFIG.RENDER.fogNear, CONFIG.RENDER.fogFar);
 
   const sunPos = CONFIG.RENDER.sunPosition;
@@ -70,8 +85,9 @@ export function createScene() {
   sunGlow.lookAt(0, 40, 0);
   scene.add(sunGlow);
 
-  // Simple flat clouds: white slabs scattered high over the city.
-  const cloudMat = new THREE.MeshLambertMaterial({ color: CONFIG.COLORS.cloud });
+  // Simple flat clouds, warmed by the low sun so they sit in the same
+  // golden hour as the rest of the scene instead of reading as white slabs.
+  const cloudMat = new THREE.MeshLambertMaterial({ color: 0xffe7c2 });
   const cloudSpots = [
     { x: -500, y: 230, z: -350, w: 120, d: 34 },
     { x: -100, y: 260, z: -500, w: 150, d: 40 },
