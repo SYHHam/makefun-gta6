@@ -17,10 +17,10 @@
 
 import * as THREE from 'three';
 
-export const CLUSTER_COUNT_MIN = 8;
-export const CLUSTER_COUNT_MAX = 12;
-export const CLUSTER_SIZE_MIN = 6;
-export const CLUSTER_SIZE_MAX = 8;
+export const CLUSTER_COUNT_MIN = 16;
+export const CLUSTER_COUNT_MAX = 20;
+export const CLUSTER_SIZE_MIN = 10;
+export const CLUSTER_SIZE_MAX = 14;
 export const CLUSTER_RADIUS = 16;
 export const PED_WALK_MIN = 1.2;
 export const PED_WALK_MAX = 1.6;
@@ -29,10 +29,12 @@ export const PED_FLEE_RANGE = 26;
 export const PED_FLEE_TIME = 4;
 
 // District centres on the 1200x1200 map (south beach, old town, harbour).
+// The plaza district guarantees a crowd right around the spawn.
 export const DISTRICTS = {
   marAzul: { name: 'Mar Azul', x: 0, z: 480, radius: 220 },
   cobreViejo: { name: 'Cobre Viejo', x: -320, z: -80, radius: 240 },
   glasspoint: { name: 'Glasspoint', x: 330, z: -300, radius: 230 },
+  plaza: { name: 'Plaza Cobre Viejo', x: -40, z: -40, radius: 130 },
 };
 
 const SKIN_TONES = [0xc68e6a, 0x8d5a3b, 0xe0ac8a, 0x6b4226, 0xd9a077];

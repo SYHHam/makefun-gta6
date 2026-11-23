@@ -35,7 +35,7 @@ html, body {
 }
 
 #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
-#hud button, #menu button, #pause-menu button,
+#hud button, #menu button, #pause-menu button, #help-menu button,
 #mission-complete button, #mission-fail button, #game-over button {
   pointer-events: auto;
 }
@@ -212,7 +212,7 @@ html, body {
 
 #toast {
   position: absolute;
-  top: 120px;
+  top: 150px;
   left: 50%;
   transform: translateX(-50%);
   background: rgba(10, 16, 26, 0.85);
@@ -221,19 +221,48 @@ html, body {
   border-radius: 20px;
   font-size: 14px;
   font-weight: 700;
+  max-width: 88vw;
+  text-align: center;
 }
 
+/* One short contextual hint, centred above the radio bar so it can never
+   collide with it. hud.js shows it for 5 seconds at the start of play,
+   then fades it out; it is never a permanent strip of instructions. */
 #hint {
   position: absolute;
-  bottom: 16px;
-  left: 220px;
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.65);
+  bottom: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 92vw;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(10, 16, 26, 0.72);
+  padding: 6px 14px;
+  border-radius: 20px;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  opacity: 1;
+  transition: opacity 0.6s ease;
+  z-index: 6;
+}
+#hint.hint-fade { opacity: 0; }
+
+/* Branch choice is built by main.js with inline styles (bottom:140px,
+   which sits on top of the dialogue box). The !important rules below are
+   the only way to move it from this file: above the dialogue on desktop,
+   above the dialogue on phones. */
+#branch-choice {
+  bottom: 230px !important;
+  max-width: 94vw;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
 /* Menus */
-#menu, #pause-menu, #mission-complete, #mission-fail, #game-over {
+#menu, #pause-menu, #help-menu, #mission-complete, #mission-fail, #game-over {
   position: fixed;
   inset: 0;
   z-index: 10;
@@ -268,25 +297,99 @@ html, body {
   cursor: pointer;
 }
 .menu-buttons button:hover { background: #ffd94d; }
-.menu-buttons button:nth-child(2) { background: #2a3340; color: #eef1f5; }
-.menu-buttons button:nth-child(2):hover { background: #3a4656; }
-.menu-buttons button:nth-child(3) { background: #2a3340; color: #eef1f5; }
-.menu-buttons button:nth-child(3):hover { background: #3a4656; }
+/* Every button after the first is a secondary (dark) action, whatever the
+   menu's button count is. */
+.menu-buttons button:not(:first-child) { background: #2a3340; color: #eef1f5; }
+.menu-buttons button:not(:first-child):hover { background: #3a4656; }
 #settings-panel { margin-top: 16px; text-align: left; font-size: 14px; }
 #settings-panel label { display: block; margin: 8px 0; }
 #settings-panel input { width: 100%; }
 #complete-reward { font-size: 26px; font-weight: 800; color: #7ee2a8; margin-top: 8px; }
 #fail-reason { color: #c8d4de; }
 
+/* Help / controls screen. Scrolls inside the card on short screens so no
+   section is ever cut off. */
+.help-card { max-height: 88vh; overflow-y: auto; text-align: left; }
+/* Back stays reachable without scrolling to the very bottom. */
+.help-card .menu-buttons {
+  position: sticky;
+  bottom: 0;
+  background: rgba(12, 18, 30, 0.95);
+  padding-top: 12px;
+}
+.help-card h2, .help-card > .menu-sub { text-align: center; }
+.help-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 28px;
+  margin-top: 8px;
+}
+.help-grid h3 {
+  font-size: 13px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: #f2c230;
+  margin: 14px 0 6px;
+}
+.help-grid ul { margin: 0; padding-left: 18px; }
+.help-grid li { font-size: 14px; line-height: 1.55; color: #dfe9f2; margin: 3px 0; }
+.help-grid kbd {
+  display: inline-block;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: #1a1405;
+  background: #f2c230;
+  border-radius: 4px;
+  padding: 1px 7px;
+  margin-right: 2px;
+}
+
 @media (max-width: 900px) {
-  #mission-panel { max-width: 240px; }
-  #mission-title { font-size: 16px; }
+  /* Top row: mission (left) and stats (right) must not meet in the middle.
+     Mission caps at 180px, stats shrinks to ~150px, leaving a clear gap. */
+  #mission-panel { max-width: 180px; padding: 8px 10px; }
+  #mission-title { font-size: 14px; }
+  #mission-stage { font-size: 11px; }
+  #mission-objective { font-size: 12px; margin-top: 4px; }
+  #stats-panel { min-width: 0; padding: 8px 10px; }
+  #money { font-size: 18px; }
+  #wanted-stars { font-size: 16px; letter-spacing: 2px; }
+  .bar-label { width: 36px; font-size: 10px; }
+  .bar { width: 84px; }
+  #ammo { font-size: 11px; }
   #dispatch-panel { display: none; }
-  #minimap-wrap, #minimap { width: 120px; height: 120px; }
-  #minimap-wrap { width: 120px; }
-  #speed-value { font-size: 32px; }
-  #dialog { bottom: 90px; }
-  #hint { display: none; }
+
+  /* Bottom row: minimap left, speed right, both shorter. The wrap keeps
+     its natural height (canvas + district label) so the label is never
+     pushed below the viewport edge. */
+  #minimap { width: 104px; height: 104px; }
+  #minimap-wrap { width: 104px; bottom: 12px; left: 12px; }
+  #minimap-district { font-size: 10px; letter-spacing: 1px; margin-top: 4px; }
+  #speed-panel { bottom: 12px; right: 12px; padding: 8px 10px; }
+  #speed-value { font-size: 28px; }
+  #vehicle-name { font-size: 12px; }
+  #vehicle-condition, #vehicle-upgrades { font-size: 11px; }
+
+  /* Radio sits in its own band above the bottom row (bottom:146px),
+     station name only, so it clears both the minimap and the speed panel. */
+  #radio-bar { bottom: 146px; font-size: 11px; padding: 5px 10px; }
+  #radio-show { display: none; }
+
+  /* Dialogue sits above the radio band; branch choices above the dialogue. */
+  #dialog { bottom: 185px; width: min(620px, 92vw); padding: 10px 12px; gap: 10px; }
+  #dialog-portrait { flex-basis: 40px; height: 40px; font-size: 20px; }
+  #dialog-name { font-size: 13px; }
+  #dialog-text { font-size: 13px; }
+  #branch-choice { bottom: 300px !important; }
+
+  /* Toast drops below the top panels (stats ends ~145px); the short hint
+     goes under the toast. */
+  #toast { top: 160px; font-size: 12px; padding: 6px 14px; }
+  #hint { bottom: auto; top: 220px; font-size: 12px; }
+
   .menu-card { padding: 24px; margin: 0 16px; }
   .menu-card h1 { font-size: 30px; }
+  .help-grid { grid-template-columns: 1fr; gap: 0; }
+  .help-card { max-height: 88vh; }
 }

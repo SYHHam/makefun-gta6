@@ -4,7 +4,14 @@
 // aiming, and a speed based pull-back while driving. The camera never
 // rolls and never goes below the street.
 // target: { x, y, z, heading, speed, aiming } where heading is the
-// facing angle in radians (0 faces north, -z) and speed is m/s.
+// facing angle in radians. Two conventions meet here: on foot heading 0
+// faces north (-z), so forward is (-sin h, -cos h) and the camera sits
+// behind at +sin/+cos. In a car main.js passes car.heading, whose
+// travel direction is the opposite: forward is (+sin h, +cos h),
+// because updateVehicle moves along (sin h, cos h) and the car mesh
+// faces +Z. So in 'drive' mode the behind/look vectors flip; without
+// the flip the camera would sit in front of the car looking back at
+// its nose instead of behind it looking forward past its tail.
 // mode: 'foot', 'drive' or 'aim'.
 
 import * as THREE from 'three';
@@ -46,10 +53,14 @@ export function updateCamera(camera, target, mode, dt) {
     height = cam.aimHeight;
   }
 
-  // Behind the target: heading 0 faces north (-z), so the camera sits
-  // at +sin/+cos of the heading, looking forward past the target.
-  const backX = Math.sin(heading);
-  const backZ = Math.cos(heading);
+  // Behind the target. On foot heading 0 faces north (-z), so the
+  // camera sits at +sin/+cos of the heading, looking forward past the
+  // target. In drive mode the heading is a car heading (forward is
+  // +sin/+cos), so the sign flips: the camera sits at -sin/-cos,
+  // behind the car, and looks forward along its travel direction.
+  const driveSign = mode === 'drive' ? -1 : 1;
+  const backX = driveSign * Math.sin(heading);
+  const backZ = driveSign * Math.cos(heading);
   desiredPos.set(
     target.x + backX * distance,
     target.y + height,

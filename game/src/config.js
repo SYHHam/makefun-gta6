@@ -54,11 +54,11 @@ export const CONFIG = {
     },
   },
 
-  // Palette: flat low-poly colours, warm late afternoon sun.
+  // Palette: golden-hour colours, warm low sun, hazy peach sky.
   COLORS: {
-    sky: 0xbfd9e8,
-    fog: 0xbfd9e8,
-    sun: 0xffd9a0,
+    sky: 0xffc98f,
+    fog: 0xf7bd7d,
+    sun: 0xff8f2e,
     ambient: 0xffe6c4,
     ground: 0x9a9a86,
     asphaltMain: 0x3a3d42,
@@ -81,32 +81,41 @@ export const CONFIG = {
     lampHead: 0xffe9a8,
     bench: 0x7a5a38,
     container: [0xc8552e, 0x2e7fc8, 0x3f9a4a, 0xd8b83a, 0x8a5fc8],
+    windowDark: 0x274b63,
+    grass: 0x5f9a48,
+    awning: [0xe8542e, 0x2e7fc8, 0xf2c230, 0x3f9a4a, 0xe84c7a],
+    neon: [0xff2e88, 0x2ee6ff, 0xffc230, 0x7cff2e],
+    kiosk: [0xd86a3a, 0x2e8a7a, 0xc8a02e, 0x7a5fc8],
+    cloud: 0xfff2dd,
+    sunDisc: 0xffd27a,
   },
 
   BUILDINGS: {
-    total: 50,
-    tall: 10,
-    commercial: 16,
-    house: 18,
-    warehouse: 6,
-    tallHeight: { min: 42, max: 88 },
-    commercialHeight: { min: 12, max: 24 },
-    houseHeight: { min: 6, max: 11 },
+    total: 94,
+    tall: 14,
+    commercial: 32,
+    house: 40,
+    warehouse: 8,
+    tallHeight: { min: 36, max: 90 },
+    commercialHeight: { min: 9, max: 30 },
+    houseHeight: { min: 6, max: 18 },
     warehouseHeight: { min: 10, max: 14 },
   },
 
   NATURE: {
-    palms: 72,
+    palms: 150,
     palmHeight: 7,
   },
 
   PROPS: {
-    lamps: 60,
-    benches: 24,
+    lamps: 120,
+    benches: 48,
     containers: 40,
-    signs: 20,
-    bollards: 36,
-    total: 180,
+    signs: 36,
+    bollards: 60,
+    kiosks: 12,
+    billboards: 10,
+    total: 326,
   },
 
   // Vehicle catalogue. Top speed in m/s, used by vehicles.js.
@@ -127,7 +136,7 @@ export const CONFIG = {
   },
 
   TRAFFIC: {
-    liveCars: 25,
+    liveCars: 40,
     followDistance: 7,
     turnChance: 0.2,
     stuckRecoverySeconds: 4,
@@ -209,13 +218,13 @@ export const CONFIG = {
   },
 
   RENDER: {
-    fogNear: 650,
-    fogFar: 1200,
-    sunPosition: [-350, 380, 350],
-    sunIntensity: 2.2,
-    hemiSky: 0xbfd9e8,
-    hemiGround: 0x8a7a5e,
-    hemiIntensity: 0.9,
+    fogNear: 500,
+    fogFar: 1100,
+    sunPosition: [-600, 180, 300],
+    sunIntensity: 2.6,
+    hemiSky: 0xffd9a0,
+    hemiGround: 0x8a6a4e,
+    hemiIntensity: 1.0,
     shadowMapSize: 2048,
     shadowCameraExtent: 700,
     maxPixelRatio: 1.75,
@@ -226,9 +235,9 @@ export const CONFIG = {
     maxDrawDistance: 1200,
     maxPixelRatio: 1.75,
     shadowMapSize: 2048,
-    trafficLive: 25,
-    pedClusters: 10,
-    instanceBudget: 400,
+    trafficLive: 40,
+    pedClusters: 18,
+    instanceBudget: 900,
   },
 
   SHOTS: {

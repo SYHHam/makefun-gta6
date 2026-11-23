@@ -89,6 +89,18 @@ function makeWheel(radius, width) {
  * trim are plain BoxGeometry/CylinderGeometry with the model's paint colour.
  * Upgrade parts (spoiler, hood intake, stripes) are added later by
  * applyUpgrade and kept under mesh.userData.upgradeParts.
+ *
+ * Orientation (single source of truth): the car's length lies along Z
+ * with the front (headlights, bonnet) at +Z. That is the direction the
+ * movement code uses: updateVehicle moves along (sin h, cos h) with
+ * mesh.rotation.y = heading, traffic sets rotation.y = atan2(dx, dz),
+ * and main.js seats the driver assuming +Z travel. The mesh used to be
+ * built length-along-X (front +X), 90 degrees off, so the car drove
+ * sideways and the drive camera saw its flank.
+ * Every part below is the old X-length layout rotated -90 deg about Y:
+ * (x, z) -> (-z, x), so front +X becomes front +Z and the car's left
+ * side (-Z) becomes +X. The wheels keep rotation.z = PI/2: their axle
+ * is now along X, the width axis, which is correct.
  */
 export function buildCarMesh(model) {
   const def = modelDef(model);
@@ -98,56 +110,56 @@ export function buildCarMesh(model) {
   const { length: L, width: W, height: H } = def;
   const bodyY = 0.55;
 
-  const body = box(L, H, W, def.color, 0, bodyY, 0);
+  const body = box(W, H, L, def.color, 0, bodyY, 0);
   group.add(body);
 
   // Cabin: coupe and muscle sit it back, sedans centre it, pickup has a cab + bed.
   const cabinColor = 0x1a2028;
   if (def.kind === 'pickup') {
-    const cab = box(def.cabinLength, 0.62, W * 0.92, cabinColor, -0.3, bodyY + H / 2 + 0.28, 0);
+    const cab = box(W * 0.92, 0.62, def.cabinLength, cabinColor, 0, bodyY + H / 2 + 0.28, -0.3);
     group.add(cab);
-    const bedWall = box(1.5, 0.3, W * 0.96, def.color, 1.55, bodyY + H / 2 + 0.12, 0);
+    const bedWall = box(W * 0.96, 0.3, 1.5, def.color, 0, bodyY + H / 2 + 0.12, 1.55);
     group.add(bedWall);
   } else {
-    const cabinX = def.kind === 'coupe' ? -0.25 : def.kind === 'muscle' ? -0.2 : 0;
-    const cabin = box(def.cabinLength, 0.58, W * 0.86, cabinColor, cabinX, bodyY + H / 2 + 0.26, 0);
+    const cabinZ = def.kind === 'coupe' ? -0.25 : def.kind === 'muscle' ? -0.2 : 0;
+    const cabin = box(W * 0.86, 0.58, def.cabinLength, cabinColor, 0, bodyY + H / 2 + 0.26, cabinZ);
     group.add(cabin);
   }
 
   // Muscle hood scoop, pickup bed rails: small model flavour, no extra cost.
   if (def.kind === 'muscle') {
-    group.add(box(0.9, 0.16, 0.7, 0x8f1d1d, 1.3, bodyY + H / 2 + 0.06, 0));
+    group.add(box(0.7, 0.16, 0.9, 0x8f1d1d, 0, bodyY + H / 2 + 0.06, 1.3));
   }
 
   // Wheels.
   const wheelR = def.kind === 'pickup' ? 0.42 : 0.36;
-  const wheelX = L / 2 - 0.85;
-  const wheelZ = W / 2 - 0.05;
+  const wheelZ = L / 2 - 0.85;
+  const wheelX = W / 2 - 0.05;
   for (const sx of [-1, 1]) {
     for (const sz of [-1, 1]) {
       const wheel = makeWheel(wheelR, 0.28);
-      wheel.position.set(sx * wheelX, wheelR, sz * wheelZ);
+      wheel.position.set(-sz * wheelX, wheelR, sx * wheelZ);
       group.add(wheel);
     }
   }
 
-  // Headlights (front is +X) and taillights.
+  // Headlights (front is +Z) and taillights.
   const headMat = new THREE.MeshStandardMaterial({ color: 0xfff2b0, emissive: 0x554400 });
   for (const sz of [-1, 1]) {
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.14, 0.4), headMat);
-    head.position.set(L / 2 + 0.01, bodyY + 0.08, sz * (W / 2 - 0.45));
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.14, 0.08), headMat);
+    head.position.set(-sz * (W / 2 - 0.45), bodyY + 0.08, L / 2 + 0.01);
     group.add(head);
     const tail = new THREE.Mesh(
-      new THREE.BoxGeometry(0.08, 0.14, 0.4),
+      new THREE.BoxGeometry(0.4, 0.14, 0.08),
       new THREE.MeshStandardMaterial({ color: 0xaa1111, emissive: 0x330000 }),
     );
-    tail.position.set(-L / 2 - 0.01, bodyY + 0.08, sz * (W / 2 - 0.45));
+    tail.position.set(-sz * (W / 2 - 0.45), bodyY + 0.08, -L / 2 - 0.01);
     group.add(tail);
   }
 
   // Bumpers.
-  group.add(box(0.18, 0.22, W * 0.98, 0x22262c, L / 2 - 0.05, 0.32, 0));
-  group.add(box(0.18, 0.22, W * 0.98, 0x22262c, -L / 2 + 0.05, 0.32, 0));
+  group.add(box(W * 0.98, 0.22, 0.18, 0x22262c, 0, 0.32, L / 2 - 0.05));
+  group.add(box(W * 0.98, 0.22, 0.18, 0x22262c, 0, 0.32, -L / 2 + 0.05));
 
   group.userData.modelKey = def.key;
   group.userData.upgradeParts = {};
@@ -184,12 +196,12 @@ export function applyUpgrade(car, type, tier) {
   if (type === 'turbo') {
     clearUpgradePart(mesh, 'spoiler');
     const spoiler = new THREE.Group();
-    const wing = box(0.5 + 0.18 * t, 0.07, W * 0.92, 0x1c1f24, 0, 0.42 + 0.06 * t, 0);
+    const wing = box(W * 0.92, 0.07, 0.5 + 0.18 * t, 0x1c1f24, 0, 0.42 + 0.06 * t, 0);
     spoiler.add(wing);
     for (const sz of [-1, 1]) {
-      spoiler.add(box(0.1, 0.42 + 0.06 * t, 0.1, 0x1c1f24, 0, 0.2, sz * (W / 2 - 0.25)));
+      spoiler.add(box(0.1, 0.42 + 0.06 * t, 0.1, 0x1c1f24, -sz * (W / 2 - 0.25), 0.2, 0));
     }
-    spoiler.position.set(-L / 2 + 0.35, bodyY + H / 2, 0);
+    spoiler.position.set(0, bodyY + H / 2, -L / 2 + 0.35);
     mesh.add(spoiler);
     mesh.userData.upgradeParts.spoiler = spoiler;
     car.maxSpeed = (def.topSpeedKmh + UPGRADE_EFFECTS.turbo.topSpeedKmh * t) * KMH_TO_MS;
@@ -201,13 +213,13 @@ export function applyUpgrade(car, type, tier) {
     clearUpgradePart(mesh, 'armor');
     const armor = new THREE.Group();
     for (const sz of [-1, 1]) {
-      armor.add(box(L * 0.9, 0.16, 0.1, 0x2a2e35, 0, 0.3, sz * (W / 2 + 0.02)));
+      armor.add(box(0.1, 0.16, L * 0.9, 0x2a2e35, -sz * (W / 2 + 0.02), 0.3, 0));
     }
     // Bull bar grows with tier: tier 2 adds a centre bar, tier 3 a full guard.
-    armor.add(box(0.12, 0.34, W * 0.7, 0x2a2e35, L / 2 + 0.06, 0.5, 0));
-    if (t >= 2) armor.add(box(0.1, 0.5, 0.14, 0x2a2e35, L / 2 + 0.08, 0.55, 0));
+    armor.add(box(W * 0.7, 0.34, 0.12, 0x2a2e35, 0, 0.5, L / 2 + 0.06));
+    if (t >= 2) armor.add(box(0.14, 0.5, 0.1, 0x2a2e35, 0, 0.55, L / 2 + 0.08));
     if (t >= 3) {
-      armor.add(box(0.1, 0.2, W * 0.5, 0x2a2e35, L / 2 + 0.08, 0.85, 0));
+      armor.add(box(W * 0.5, 0.2, 0.1, 0x2a2e35, 0, 0.85, L / 2 + 0.08));
     }
     mesh.add(armor);
     mesh.userData.upgradeParts.armor = armor;
@@ -220,10 +232,10 @@ export function applyUpgrade(car, type, tier) {
   if (type === 'nitro') {
     clearUpgradePart(mesh, 'nitro');
     const nitro = new THREE.Group();
-    nitro.add(box(0.7, 0.12 + 0.05 * t, 0.6, 0x14161a, 1.2, bodyY + H / 2 + 0.08, 0));
+    nitro.add(box(0.6, 0.12 + 0.05 * t, 0.7, 0x14161a, 0, bodyY + H / 2 + 0.08, 1.2));
     // Racing stripes along the bonnet and roof, wider per tier.
     const stripeW = 0.14 + 0.08 * t;
-    nitro.add(box(L * 0.98, 0.02, stripeW, 0x111318, 0, bodyY + H / 2 + 0.02, 0));
+    nitro.add(box(stripeW, 0.02, L * 0.98, 0x111318, 0, bodyY + H / 2 + 0.02, 0));
     mesh.add(nitro);
     mesh.userData.upgradeParts.nitro = nitro;
     car.boostAccel = UPGRADE_EFFECTS.nitro.boostAccel * t;

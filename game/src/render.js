@@ -1,8 +1,8 @@
 // Sunline: Breakwater - Three.js setup and frame rendering.
 // initRenderer(canvas) builds the WebGL renderer, createScene() builds
-// the scene with late afternoon sun, warm ambient light and pale blue
-// fog, renderFrame() paints one frame. No network, no assets: the
-// scene is lit and coloured in code only.
+// the scene with golden-hour sun, warm hazy sky, a visible sun disc and
+// drifting low-poly clouds, renderFrame() paints one frame. No network,
+// no assets: the scene is lit and coloured in code only.
 
 import * as THREE from 'three';
 import { CONFIG } from './config.js';
@@ -18,12 +18,13 @@ export function initRenderer(canvas) {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = 1.15;
   return renderer;
 }
 
-// Build the scene: pale blue sky and fog, a low warm sun from the
-// south west, and a hemisphere light so shadows never go black.
+// Build the scene: warm peach sky and fog, a low orange golden-hour
+// sun from the west, a visible sun disc, simple flat clouds, and a
+// hemisphere light so shadows never go black. Still bright and readable.
 export function createScene() {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(CONFIG.COLORS.sky);
@@ -50,6 +51,48 @@ export function createScene() {
     CONFIG.RENDER.hemiIntensity,
   );
   scene.add(hemi);
+
+  // Visible sun disc low in the west, in line with the directional light.
+  const sunDisc = new THREE.Mesh(
+    new THREE.CircleGeometry(55, 24),
+    new THREE.MeshBasicMaterial({ color: CONFIG.COLORS.sunDisc, fog: false }),
+  );
+  sunDisc.position.set(-950, 260, 480);
+  sunDisc.lookAt(0, 40, 0);
+  scene.add(sunDisc);
+  const sunGlow = new THREE.Mesh(
+    new THREE.CircleGeometry(90, 24),
+    new THREE.MeshBasicMaterial({
+      color: 0xffb45e, fog: false, transparent: true, opacity: 0.35,
+    }),
+  );
+  sunGlow.position.set(-960, 260, 485);
+  sunGlow.lookAt(0, 40, 0);
+  scene.add(sunGlow);
+
+  // Simple flat clouds: white slabs scattered high over the city.
+  const cloudMat = new THREE.MeshLambertMaterial({ color: CONFIG.COLORS.cloud });
+  const cloudSpots = [
+    { x: -500, y: 230, z: -350, w: 120, d: 34 },
+    { x: -100, y: 260, z: -500, w: 150, d: 40 },
+    { x: 300, y: 210, z: -250, w: 100, d: 30 },
+    { x: 500, y: 250, z: 150, w: 140, d: 36 },
+    { x: -350, y: 220, z: 250, w: 110, d: 30 },
+    { x: 50, y: 270, z: 450, w: 160, d: 42 },
+    { x: -550, y: 240, z: 50, w: 90, d: 28 },
+    { x: 150, y: 200, z: -450, w: 90, d: 26 },
+  ];
+  for (const c of cloudSpots) {
+    const cloud = new THREE.Mesh(new THREE.BoxGeometry(c.w, 8, c.d), cloudMat);
+    cloud.position.set(c.x, c.y, c.z);
+    cloud.castShadow = false;
+    cloud.receiveShadow = false;
+    scene.add(cloud);
+    const puff = new THREE.Mesh(new THREE.BoxGeometry(c.w * 0.5, 7, c.d * 0.8), cloudMat);
+    puff.position.set(c.x + c.w * 0.15, c.y + 6, c.z);
+    puff.castShadow = false;
+    scene.add(puff);
+  }
 
   return { scene, sun, hemi };
 }

@@ -3,8 +3,11 @@
 // styles): mission panel top left, POLICE DISPATCH mid left, money/wanted/
 // health/armor top right, dialog bottom center, minimap bottom left, speed
 // bottom right, Sunwire FM bar. Menus reuse the page's own overlays:
-// #menu (start/help), #pause-menu, #mission-complete, #mission-fail,
-// #game-over. No DOM is built here; the ids below must match index.html.
+// #menu (start/help), #pause-menu, #help-menu (full controls), #mission-
+// complete, #mission-fail, #game-over. No DOM is built here; the ids below
+// must match index.html. The only gameplay hint is one short line shown
+// for the first 5 seconds of play, then faded; all instructions live in
+// the Help screen instead.
 let dispatchPanelFn = null;
 let dispatchPanelTried = false;
 async function loadDispatchPanel() {
@@ -49,6 +52,10 @@ let dialogTimer = 0;
 let lastDialogKey = '';
 let origMenuTitleHTML = '';
 let origMenuSubText = '';
+let hintTimer = 0;
+let hintFadeTimeout = 0;
+let introHintShown = false;
+let pauseCallbacks = null;
 
 function buildDOM() {
   if (els) return els;
@@ -82,15 +89,20 @@ function buildDOM() {
     carUpgrades: q('vehicle-upgrades'),
     radioShow: q('radio-show'),
     reticle: q('reticle'),
+    hint: q('hint'),
     menuStart: q('menu'),
     menuTitle: menuTitleEl,
     menuSub: menuSubEl,
     btnContinue: q('btn-continue'),
     btnNewGame: q('btn-new-game'),
+    btnHelp: q('btn-help'),
     btnSettings: q('btn-settings'),
     settingsPanel: q('settings-panel'),
+    menuHelp: q('help-menu'),
+    btnBackHelp: q('btn-back-help'),
     menuPause: q('pause-menu'),
     btnResume: q('btn-resume'),
+    btnHelpPause: q('btn-help-pause'),
     btnRestartMission: q('btn-restart-mission'),
     btnQuitMenu: q('btn-quit-menu'),
     menuComplete: q('mission-complete'),
@@ -137,6 +149,31 @@ export function hideDialog() {
   const e = buildDOM();
   e.dialog.classList.add('hidden');
   dialogTimer = 0;
+}
+
+// One short contextual hint: shown for a few seconds, then faded out.
+// Never a permanent strip of instructions; the full controls live in Help.
+export function showHint(text, seconds) {
+  const e = buildDOM();
+  if (!e.hint) return;
+  if (hintFadeTimeout) { clearTimeout(hintFadeTimeout); hintFadeTimeout = 0; }
+  e.hint.textContent = text;
+  e.hint.classList.remove('hidden');
+  e.hint.classList.remove('hint-fade');
+  hintTimer = seconds || 5;
+}
+
+export function hideHint() {
+  const e = buildDOM();
+  if (!e.hint) return;
+  hintTimer = 0;
+  e.hint.classList.add('hint-fade');
+  if (hintFadeTimeout) clearTimeout(hintFadeTimeout);
+  hintFadeTimeout = setTimeout(() => {
+    e.hint.classList.add('hidden');
+    e.hint.classList.remove('hint-fade');
+    hintFadeTimeout = 0;
+  }, 650);
 }
 
 export function updateHUD(state, dt) {
@@ -216,6 +253,17 @@ export function updateHUD(state, dt) {
   if (p.onFoot && p.aiming) e.reticle.classList.remove('hidden');
   else e.reticle.classList.add('hidden');
 
+  // One short hint for the first 5 seconds of play, then it fades and
+  // never comes back. Full instructions live in the Help screen.
+  if (!introHintShown) {
+    introHintShown = true;
+    showHint('WASD bergerak · E masuk mobil · Esc pause', 5);
+  }
+  if (hintTimer > 0 && dt) {
+    hintTimer -= dt;
+    if (hintTimer <= 0) hideHint();
+  }
+
   // Dialog countdown.
   if (dialogTimer > 0 && dt) {
     dialogTimer -= dt;
@@ -231,7 +279,7 @@ export function updateHUD(state, dt) {
 
 function hideAllMenus() {
   const e = buildDOM();
-  for (const key of ['menuStart', 'menuPause', 'menuComplete', 'menuFail', 'menuGameOver']) {
+  for (const key of ['menuStart', 'menuPause', 'menuHelp', 'menuComplete', 'menuFail', 'menuGameOver']) {
     if (e[key]) e[key].classList.add('hidden');
   }
   if (e.settingsPanel) e.settingsPanel.classList.add('hidden');
@@ -256,12 +304,17 @@ export function showMenu(kind, data, callbacks) {
     e.menuSub.textContent = origMenuSubText;
     wireButton(e.btnContinue, d.hasSave ? 'Continue' : 'New Game', cb.onStart || null);
     wireButton(e.btnNewGame, 'New Game', d.hasSave ? cb.onNewGame || null : null);
+    wireButton(e.btnHelp, 'How to Play', cb.onHelp || null);
     wireButton(e.btnSettings, 'Settings', () => {
       if (e.settingsPanel) e.settingsPanel.classList.toggle('hidden');
     });
     e.menuStart.classList.remove('hidden');
   } else if (kind === 'pause') {
+    pauseCallbacks = cb;
     wireButton(e.btnResume, 'Resume', cb.onResume || null);
+    wireButton(e.btnHelpPause, 'Controls', () => {
+      showMenu('help', {}, { onBack: () => showMenu('pause', {}, pauseCallbacks || {}) });
+    });
     wireButton(e.btnRestartMission, 'Restart Mission', cb.onRestartMission || null);
     wireButton(e.btnQuitMenu, 'Quit to Menu', cb.onQuit || null);
     e.menuPause.classList.remove('hidden');
@@ -278,12 +331,12 @@ export function showMenu(kind, data, callbacks) {
     wireButton(e.btnMenuGameover, 'Quit to Menu', cb.onQuit || null);
     e.menuGameOver.classList.remove('hidden');
   } else if (kind === 'help') {
-    e.menuTitle.textContent = 'HOW TO PLAY';
-    e.menuSub.textContent = 'WASD drive or walk. E steal or enter a car, E again to leave. Mouse aims, click shoots, 1 fists, 2 pistol. Shift sprint on foot. N nitro boost if fitted. R toggles Sunwire FM. Wanted stars rise when witnesses see crimes; break line of sight for 12 seconds to cool down. Upgrade Turbo, Armor and Nitro at the workshop garage.';
-    wireButton(e.btnContinue, 'Back', cb.onBack || null);
-    wireButton(e.btnNewGame, null, null);
-    wireButton(e.btnSettings, null, null);
-    e.menuStart.classList.remove('hidden');
+    // Full controls screen in its own overlay (#help-menu in index.html).
+    // Back returns via cb.onBack: to the title screen from the start menu,
+    // to the pause menu from pause (wired above). Without a back handler
+    // the button stays hidden rather than stranding the player.
+    wireButton(e.btnBackHelp, 'Back', cb.onBack || null);
+    e.menuHelp.classList.remove('hidden');
   }
   return e;
 }

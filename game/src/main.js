@@ -20,6 +20,7 @@ import { drawMinimap } from './minimap.js';
 import { initAudio, resumeAudio, playSound, setRadio, setVolume, setMusicIntensity, setEngine } from './audio.js';
 import { loadSave, saveGame, clearSave } from './save.js';
 import { createInput, ACTION_INTERACT, ACTION_PAUSE, ACTION_RADIO, ACTION_WEAPON_1, ACTION_WEAPON_2, ACTION_SHOOT, ACTION_CONFIRM, ACTION_NITRO } from './input.js';
+import { initTouch } from './touch.js';
 
 const MAX_FRAME = 0.1;
 const params = new URLSearchParams(window.location.search);
@@ -46,27 +47,84 @@ if (!minimapCanvas) {
   document.body.appendChild(minimapCanvas);
 }
 
-// Player mesh: simple low-poly Mara, orange jacket, dark trousers.
+// Player mesh: low-poly Mara, orange jacket, dark trousers.
+// 16 meshes: torso, collar, belt, holster, head, hair, 2 arms
+// (upper + forearm + hand each) and 2 legs (leg + shoe each).
+// Model faces local -Z (camera convention: heading 0 faces -z, forward
+// is (-sin h, -cos h)); feet at y 0, head top ~1.82 m.
+// Arm/leg pivots are Groups stored in userData so the frame loop can
+// pose them (walk swing, aim, recoil, driving).
 function buildPlayerMesh() {
   const group = new THREE.Group();
-  const jacket = new THREE.Mesh(
-    new THREE.BoxGeometry(0.55, 0.75, 0.32),
-    new THREE.MeshLambertMaterial({ color: 0xe8722a }),
-  );
-  jacket.position.y = 1.05;
-  jacket.castShadow = true;
-  const head = new THREE.Mesh(
-    new THREE.SphereGeometry(0.21, 12, 10),
-    new THREE.MeshLambertMaterial({ color: 0xd9a986 }),
-  );
-  head.position.y = 1.62;
+  const lambert = (color) => new THREE.MeshLambertMaterial({ color });
+  const jacket = lambert(0xe8722a);
+  const jacketDark = lambert(0xc2571a);
+  const skin = lambert(0xd9a986);
+  const trousers = lambert(0x2a2f3a);
+  const hairMat = lambert(0x3a2a1e);
+  const dark = lambert(0x241a12);
+  const shoeMat = lambert(0x1c1c22);
+  function box(w, h, d, material, x, y, z) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+    m.position.set(x, y, z);
+    m.castShadow = true;
+    return m;
+  }
+
+  // Torso + details: collar, belt, pistol holster on the right hip.
+  const torso = box(0.55, 0.72, 0.32, jacket, 0, 1.06, 0);
+  const collar = box(0.42, 0.09, 0.36, jacketDark, 0, 1.40, 0);
+  const belt = box(0.56, 0.07, 0.33, dark, 0, 0.71, 0);
+  const holster = box(0.09, 0.20, 0.16, dark, 0.29, 0.60, 0.06);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.20, 12, 10), skin);
+  head.position.y = 1.60;
   head.castShadow = true;
-  const legs = new THREE.Mesh(
-    new THREE.BoxGeometry(0.45, 0.65, 0.28),
-    new THREE.MeshLambertMaterial({ color: 0x2a2f3a }),
-  );
-  legs.position.y = 0.35;
-  group.add(jacket, head, legs);
+  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.21, 12, 10), hairMat);
+  hair.scale.set(1, 0.72, 1);
+  hair.position.set(0, 1.67, 0.03);
+  hair.castShadow = true;
+  group.add(torso, collar, belt, holster, head, hair);
+
+  // Arms: shoulder pivot Group, upper arm, elbow pivot Group with
+  // forearm + skin hand. Hands hang at hip level when relaxed.
+  function makeArm(side) {
+    const shoulder = new THREE.Group();
+    shoulder.position.set(side * 0.335, 1.38, 0);
+    shoulder.add(box(0.13, 0.34, 0.13, jacket, 0, -0.17, 0));
+    const elbow = new THREE.Group();
+    elbow.position.set(0, -0.34, 0);
+    elbow.add(box(0.12, 0.30, 0.12, jacket, 0, -0.15, 0));
+    elbow.add(box(0.11, 0.13, 0.11, skin, 0, -0.35, 0));
+    shoulder.add(elbow);
+    group.add(shoulder);
+    return { shoulder, elbow };
+  }
+  const armL = makeArm(-1);
+  const armR = makeArm(1);
+
+  // Legs: hip pivot Group, trouser leg, shoe with the toe forward (-Z).
+  function makeLeg(side) {
+    const hip = new THREE.Group();
+    hip.position.set(side * 0.13, 0.72, 0);
+    hip.add(box(0.17, 0.62, 0.18, trousers, 0, -0.31, 0));
+    hip.add(box(0.18, 0.09, 0.30, shoeMat, 0, -0.665, -0.05));
+    group.add(hip);
+    return hip;
+  }
+  const legL = makeLeg(-1);
+  const legR = makeLeg(1);
+
+  group.userData.armL = armL.shoulder;
+  group.userData.armR = armR.shoulder;
+  group.userData.elbowL = armL.elbow;
+  group.userData.elbowR = armR.elbow;
+  group.userData.legL = legL;
+  group.userData.legR = legR;
+  group.userData.walkPhase = 0;
+  group.userData.swingAmp = 0;
+  group.userData.aimBlend = 0;
+  group.userData.recoil = 0;
+  group.userData.punch = 0;
   return group;
 }
 
@@ -134,16 +192,37 @@ state.district = 'Cobre Viejo';
 if (city.spawnPoints && city.spawnPoints.garage) state.world.garage = city.spawnPoints.garage;
 
 // Parked cars the player can steal, spread across the three districts.
+// Every spot sits 6 m off a road centreline (roadLines -500/-300/-100/
+// 100/300/500 in config.js), i.e. on the road edge / sidewalk, never
+// inside a block. heading is parallel to the road: PI/2 on vertical
+// roads (car's long axis lies along Z), 0 on horizontal roads.
 const PARKED_SPOTS = [
-  { model: 'solara', x: -380, z: -380 },
-  { model: 'brisa', x: -100, z: 100 },
-  { model: 'cinderback', x: 300, z: -100 },
-  { model: 'dockrunner', x: 420, z: -300 },
-  { model: 'velvet', x: 100, z: 420 },
-  { model: 'brisa', x: -300, z: 300 },
-  { model: 'solara', x: 200, z: 200 },
+  // Cobre Viejo (x <= 100, z <= 300).
+  { model: 'solara', x: -506, z: -380, heading: Math.PI / 2 },
+  { model: 'brisa', x: -294, z: -180, heading: Math.PI / 2 },
+  { model: 'cinderback', x: -106, z: 120, heading: Math.PI / 2 },
+  { model: 'dockrunner', x: -380, z: -506, heading: 0 },
+  { model: 'velvet', x: -180, z: -294, heading: 0 },
+  { model: 'brisa', x: 94, z: -420, heading: Math.PI / 2 },
+  { model: 'solara', x: -420, z: 94, heading: 0 },
+  // Glasspoint (x > 100, z <= 300).
+  { model: 'solara', x: 106, z: -380, heading: Math.PI / 2 },
+  { model: 'brisa', x: 294, z: -100, heading: Math.PI / 2 },
+  { model: 'cinderback', x: 506, z: 200, heading: Math.PI / 2 },
+  { model: 'dockrunner', x: 300, z: -106, heading: 0 },
+  { model: 'velvet', x: 420, z: 294, heading: 0 },
+  { model: 'brisa', x: 180, z: -506, heading: 0 },
+  { model: 'solara', x: 506, z: -420, heading: Math.PI / 2 },
+  // Mar Azul (z > 300, beach band).
+  { model: 'velvet', x: -380, z: 506, heading: 0 },
+  { model: 'brisa', x: -100, z: 494, heading: 0 },
+  { model: 'solara', x: 100, z: 506, heading: 0 },
+  { model: 'cinderback', x: 380, z: 494, heading: 0 },
+  { model: 'dockrunner', x: -506, z: 420, heading: Math.PI / 2 },
+  { model: 'brisa', x: 294, z: 420, heading: Math.PI / 2 },
+  { model: 'velvet', x: 506, z: 460, heading: Math.PI / 2 },
 ];
-const parkedCars = PARKED_SPOTS.map((s) => spawnCar(s.model, { x: s.x, z: s.z, heading: Math.random() * Math.PI * 2 }, scene));
+const parkedCars = PARKED_SPOTS.map((s) => spawnCar(s.model, { x: s.x, z: s.z, heading: s.heading ?? Math.random() * Math.PI * 2 }, scene));
 for (const car of parkedCars) car.parked = true;
 state.parkedCars = parkedCars;
 
@@ -356,7 +435,48 @@ function updatePlayerOnFoot(dt) {
   playerMesh.position.copy(player.pos);
   playerMesh.rotation.y = player.heading;
   playerMesh.visible = true;
+  updateOnFootPose(dt);
 }
+
+// Arm + leg pose for Mara on foot (W2). Walk/run: arms swing opposite
+// to the legs (sine of distance travelled), elbows slightly bent; idle:
+// arms hang relaxed. Aiming: both arms rise forward to hold the pistol,
+// left hand supporting, right hand on the grip; recoil kicks the arms
+// up briefly after a shot, a punch swings the right arm forward.
+function updateOnFootPose(dt) {
+  const ud = playerMesh.userData;
+  const moving = player.speed > 0.5;
+  if (moving) ud.walkPhase += dt * player.speed * 1.9;
+  const targetAmp = moving ? Math.min(0.55, 0.22 + player.speed * 0.04) : 0;
+  ud.swingAmp = THREE.MathUtils.lerp(ud.swingAmp, targetAmp, Math.min(1, dt * 8));
+  ud.aimBlend = THREE.MathUtils.lerp(ud.aimBlend, player.aiming ? 1 : 0, Math.min(1, dt * 10));
+  ud.recoil = Math.max(0, ud.recoil - dt * 5);
+  ud.punch = Math.max(0, ud.punch - dt * 3.5);
+  const s = Math.sin(ud.walkPhase);
+  const amp = ud.swingAmp;
+  const ab = ud.aimBlend;
+  const kick = ud.recoil * 0.25;
+  const punchSwing = ud.punch * 1.1;
+
+  const armLxWalk = s * amp;
+  const armRxWalk = -s * amp + punchSwing;
+  const elbowLxWalk = 0.22 + 0.25 * amp * Math.max(0, s);
+  const elbowRxWalk = Math.max(0.05, 0.22 + 0.25 * amp * Math.max(0, -s) - ud.punch * 0.2);
+  const legLxWalk = -s * amp * 0.85;
+  const legRxWalk = s * amp * 0.85;
+
+  ud.armL.rotation.x = THREE.MathUtils.lerp(armLxWalk, 1.25 + kick, ab);
+  ud.armL.rotation.z = THREE.MathUtils.lerp(0.16, 0.22, ab);
+  ud.armR.rotation.x = THREE.MathUtils.lerp(armRxWalk, 1.25 + kick, ab);
+  ud.armR.rotation.z = THREE.MathUtils.lerp(-0.16, -0.22, ab);
+  ud.elbowL.rotation.x = THREE.MathUtils.lerp(elbowLxWalk, 0.15, ab);
+  ud.elbowR.rotation.x = THREE.MathUtils.lerp(elbowRxWalk, 0.15, ab);
+  ud.legL.rotation.x = THREE.MathUtils.lerp(legLxWalk, 0.18, ab);
+  ud.legR.rotation.x = THREE.MathUtils.lerp(legRxWalk, -0.18, ab);
+}
+
+const UP_AXIS = new THREE.Vector3(0, 1, 0);
+const seatOffset = new THREE.Vector3();
 
 function updatePlayerInCar(dt) {
   const car = player.car;
@@ -376,6 +496,34 @@ function updatePlayerInCar(dt) {
   player.speed = Math.abs(car.speed);
   player.vel.set(Math.sin(car.heading) * car.speed, 0, Math.cos(car.heading) * car.speed);
   setEngine(Math.abs(car.speed) / Math.max(1, car.maxSpeed), true);
+
+  // Driver pose (W2): Mara stays visible, seated in the driver seat
+  // with both hands forward on the wheel. Car-local +Z is the travel
+  // direction (mesh.rotation.y = heading maps +Z to (sin h, cos h)),
+  // so the driver sits at local (-0.4, 0.05, -0.35) on the driver
+  // (-Z) side and the mesh turns heading + PI so the model, which
+  // faces local -Z, faces the direction of travel. Hips/torso stay
+  // inside the cabin, only the head clears the roofline; no limb
+  // sticks out of the car. Hands track the steering a touch.
+  const ud = playerMesh.userData;
+  seatOffset.set(-0.4, 0.05, -0.35).applyAxisAngle(UP_AXIS, car.heading);
+  playerMesh.position.set(
+    car.mesh.position.x + seatOffset.x,
+    car.mesh.position.y + seatOffset.y,
+    car.mesh.position.z + seatOffset.z,
+  );
+  playerMesh.rotation.y = car.heading + Math.PI;
+  playerMesh.visible = true;
+  const steer = car.steering || 0;
+  ud.armL.rotation.set(0.95 - steer * 0.1, 0, 0.22);
+  ud.armR.rotation.set(0.95 + steer * 0.1, 0, -0.22);
+  ud.elbowL.rotation.x = 0.5;
+  ud.elbowR.rotation.x = 0.5;
+  ud.legL.rotation.x = 1.25;
+  ud.legR.rotation.x = 1.25;
+  ud.aimBlend = 0;
+  ud.recoil = 0;
+  ud.punch = 0;
 }
 
 function applyShot(n) {
@@ -393,25 +541,30 @@ function applyShot(n) {
     enterCarSafe();
     spawnPolice(state);
   } else if (n === 2) {
-    // Driving: Solara S through Glasspoint toward the beach, wanted 0.
-    playerCar.mesh.position.set(420, 0, -380);
-    playerCar.heading = Math.PI;
+    // Driving: Solara S down the Glasspoint main road (x=100) toward
+    // the beach, wanted 0. On the road, not inside a block, so the
+    // street, buildings, palms and traffic are all in frame.
+    playerCar.mesh.position.set(100, 0, -200);
+    playerCar.heading = 0;
     playerCar.speed = 18;
-    player.pos.set(420, 0, -380);
+    player.pos.set(100, 0, -200);
     state.wanted = 0;
     enterCarSafe();
   } else if (n === 3) {
-    // Combat: Mara aiming a pistol on a Cobre Viejo sidewalk, 1 police behind.
-    player.pos.set(-380, 0, 80);
-    player.heading = Math.PI / 2;
+    // Combat: Mara aiming a pistol on the Cobre Viejo sidewalk beside
+    // the x=-300 road, facing east toward the road, 1 police behind.
+    // rightDown held so the aim pose (both arms forward) shows.
+    player.pos.set(-312, 0, 80);
+    player.heading = -Math.PI / 2;
     selectWeapon(state, 1);
+    input.mouse.rightDown = true;
     state.wanted = 1;
     spawnPolice(state);
   } else if (n === 4) {
-    // Story: Mara and Nadia outside Sunwire FM, mission 2 stage 1.
-    const studio = (sp.sunwire) || { x: -300, z: 420 };
-    player.pos.set(studio.x, 0, studio.z);
-    player.heading = Math.PI;
+    // Story: Mara at the plaza fountain facing the workshop, mission 2
+    // stage 1, with the neon workshop, palms and pedestrians in frame.
+    player.pos.set(20, 0, 55);
+    player.heading = 0.3;
     startMission(state, 'm2');
     showDialog('Nadia', 'Rekaman itu bukti terakhir kita, Mara. Ambil di Cobre Viejo, bawa kembali ke studio.', 8);
   }
@@ -493,8 +646,11 @@ function frame(now) {
   player.aiming = !!input.mouse.rightDown && !player.inCar;
   if (!player.inCar && input.consume(ACTION_SHOOT)) {
     const w = currentWeapon(state);
-    if (w && w.id === 'pistol') tryShoot(state);
-    else tryPunch(state);
+    if (w && w.id === 'pistol') {
+      if (tryShoot(state)) playerMesh.userData.recoil = 1;
+    } else if (tryPunch(state)) {
+      playerMesh.userData.punch = 1;
+    }
   }
 
   // Movement.
@@ -583,6 +739,7 @@ window.addEventListener('pointerdown', () => { initAudio(); resumeAudio(); }, { 
 window.addEventListener('keydown', () => { initAudio(); resumeAudio(); }, { once: true });
 
 syncPlayer();
+initTouch(input, { onCameraDrag: (dx) => { player.heading += dx * 0.005; }, isInCar: () => player.inCar });
 if (shot) {
   applyShot(shot);
 } else {

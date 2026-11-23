@@ -15,7 +15,7 @@
 import * as THREE from 'three';
 import { buildCarMesh, CAR_MODELS } from './vehicles.js';
 
-export const TRAFFIC_TARGET_COUNT = 25;
+export const TRAFFIC_TARGET_COUNT = 40;
 export const TRAFFIC_GAP = 7;
 export const TRAFFIC_SPAWN_MIN = 120;
 export const TRAFFIC_SPAWN_MAX = 230;

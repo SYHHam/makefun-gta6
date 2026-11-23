@@ -25,6 +25,11 @@ const DRIVE_KEYS = {
 export function createInput(canvas) {
   const keys = {};
   const mouse = { x: 0, y: 0, down: false, rightDown: false, dx: 0, dy: 0 };
+  // Analog touch stick state, driven by touch.js (see initTouch).
+  // x: -1 (left) .. 1 (right), y: -1 (up/forward) .. 1 (down/back).
+  // touchMove is the same object under the name main.js/touch.js use.
+  const analog = { x: 0, y: 0 };
+  const analogActive = () => Math.hypot(analog.x, analog.y) > 0.15;
   const queue = new Set();
   let locked = false;
 
@@ -77,6 +82,8 @@ export function createInput(canvas) {
     for (const k of Object.keys(keys)) keys[k] = false;
     mouse.down = false;
     mouse.rightDown = false;
+    analog.x = 0;
+    analog.y = 0;
   }
 
   function onContextMenu(event) {
@@ -104,13 +111,24 @@ export function createInput(canvas) {
   return {
     keys,
     mouse,
+    // Analog stick vector; touch.js writes, steer()/throttle() read.
+    analog,
+    touchMove: analog,
     get locked() { return locked; },
     /** True while the named drive key is held. */
     held(name) { return !!keys[name]; },
-    /** Steering -1..1 from A/D or arrows. */
-    steer() { return (keys.right ? 1 : 0) - (keys.left ? 1 : 0); },
-    /** Throttle -1..1 from W/S or arrows. */
-    throttle() { return (keys.forward ? 1 : 0) - (keys.back ? 1 : 0); },
+    /** Steering -1..1: analog stick when active, else A/D or arrows. */
+    steer() {
+      if (analogActive()) return Math.max(-1, Math.min(1, analog.x));
+      return (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
+    },
+    /** Throttle -1..1: analog stick when active, else W/S or arrows. */
+    throttle() {
+      if (analogActive()) return Math.max(-1, Math.min(1, -analog.y));
+      return (keys.forward ? 1 : 0) - (keys.back ? 1 : 0);
+    },
+    /** Queue a one-shot action (used by touch buttons). */
+    queueAction(action) { queue.add(action); },
     /** True once if the action was queued since the last consume call. */
     consume(action) {
       if (queue.has(action)) { queue.delete(action); return true; }

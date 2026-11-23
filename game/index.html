@@ -70,7 +70,7 @@
   </div>
 
   <div id="toast" class="hidden"></div>
-  <div id="hint">WASD jalan, E masuk mobil, 1/2 senjata, Esc pause</div>
+  <div id="hint" class="hidden"></div>
 </div>
 
 <div id="menu">
@@ -80,13 +80,14 @@
     <div class="menu-buttons">
       <button id="btn-continue" type="button">Continue</button>
       <button id="btn-new-game" type="button">New Game</button>
+      <button id="btn-help" type="button">How to Play</button>
       <button id="btn-settings" type="button">Settings</button>
     </div>
     <div id="settings-panel" class="hidden">
       <label>Volume <input id="setting-volume" type="range" min="0" max="100" value="70"></label>
       <label>Mouse sensitivity <input id="setting-sensitivity" type="range" min="20" max="200" value="100"></label>
     </div>
-    <p class="menu-foot">WASD bergerak, Mouse bidik, E masuk dan keluar mobil, 1 dan 2 ganti senjata, Esc pause. Keyboard dan mouse saja.</p>
+    <p class="menu-foot">Semua kontrol ada di How to Play.</p>
   </div>
 </div>
 
@@ -95,6 +96,7 @@
     <h2>PAUSED</h2>
     <div class="menu-buttons">
       <button id="btn-resume" type="button">Resume</button>
+      <button id="btn-help-pause" type="button">Controls</button>
       <button id="btn-restart-mission" type="button">Restart Mission</button>
       <button id="btn-quit-menu" type="button">Quit to Menu</button>
     </div>
@@ -128,6 +130,62 @@
     <div class="menu-buttons">
       <button id="btn-retry-gameover" type="button">Retry from Checkpoint</button>
       <button id="btn-menu-gameover" type="button">Quit to Menu</button>
+    </div>
+  </div>
+</div>
+
+<div id="help-menu" class="hidden">
+  <div class="menu-card help-card">
+    <h2>HOW TO PLAY</h2>
+    <p class="menu-sub">Solmera tidak pernah tidur. Semua yang perlu kamu tahu ada di sini.</p>
+    <div class="help-grid">
+      <section>
+        <h3>Bergerak</h3>
+        <ul>
+          <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> jalan atau mengemudi</li>
+          <li><kbd>Shift</kbd> lari saat jalan kaki</li>
+          <li><kbd>Mouse</kbd> membidik, <kbd>Klik kiri</kbd> menembak</li>
+        </ul>
+      </section>
+      <section>
+        <h3>Mobil</h3>
+        <ul>
+          <li><kbd>E</kbd> masuk mobil, <kbd>E</kbd> lagi untuk keluar</li>
+          <li><kbd>N</kbd> nitro, kalau sudah terpasang</li>
+          <li><kbd>R</kbd> radio Sunwire FM on/off</li>
+        </ul>
+      </section>
+      <section>
+        <h3>Senjata</h3>
+        <ul>
+          <li><kbd>1</kbd> tinju, <kbd>2</kbd> pistol</li>
+          <li>Peluru tersisa terlihat di kanan atas</li>
+        </ul>
+      </section>
+      <section>
+        <h3>Wanted</h3>
+        <ul>
+          <li>Bintang naik kalau saksi melihat kejahatanmu.</li>
+          <li>Hilang dari pandangan polisi 12 detik untuk mendingin.</li>
+        </ul>
+      </section>
+      <section>
+        <h3>Misi</h3>
+        <ul>
+          <li>Ikuti panel misi di kiri atas layar.</li>
+          <li>Datang ke bengkel untuk mulai misi berikutnya.</li>
+        </ul>
+      </section>
+      <section>
+        <h3>Upgrade &amp; Pause</h3>
+        <ul>
+          <li><kbd>U</kbd> beli upgrade di bengkel: Turbo, Armor, Nitro.</li>
+          <li><kbd>Esc</kbd> pause.</li>
+        </ul>
+      </section>
+    </div>
+    <div class="menu-buttons">
+      <button id="btn-back-help" type="button">Back</button>
     </div>
   </div>
 </div>
